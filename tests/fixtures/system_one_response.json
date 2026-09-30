@@ -1,0 +1,52 @@
+{
+  "answers": {
+    "perception_gap": {
+      "type": "Noul",
+      "probability": 0.78
+    },
+    "values_conflict": {
+      "type": "Noul",
+      "probability": 0.3
+    },
+    "response_efficacy_gap": {
+      "type": "Noul",
+      "probability": 0.59
+    },
+    "collective_efficacy_gap": {
+      "type": "Noul",
+      "probability": 0.41
+    },
+    "structural_barrier": {
+      "type": "Noul",
+      "probability": 0.66
+    },
+    "insufficient_evidence": {
+      "type": "Noul",
+      "probability": 0.21
+    },
+    "response_efficacy_level": {
+      "type": "Score",
+      "score": 2.3,
+      "probabilities": {
+        "0": 0.08,
+        "1": 0.2,
+        "2": 0.42,
+        "3": 0.3
+      }
+    },
+    "next_diagnostic_probe": {
+      "type": "Choice",
+      "choice": "audit_practical_constraints",
+      "probabilities": {
+        "check_factual_understanding": 0.06,
+        "map_values_and_tradeoffs": 0.08,
+        "test_response_efficacy": 0.14,
+        "check_collective_coordination": 0.1,
+        "audit_practical_constraints": 0.47,
+        "collect_more_evidence": 0.1,
+        "human_review_mixed_case": 0.05
+      },
+      "confidence": 0.47
+    }
+  }
+}

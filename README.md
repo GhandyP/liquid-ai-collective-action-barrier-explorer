@@ -1,41 +1,56 @@
-# Collective Action Barrier Explorer (D1)
+# D1 — Synthetic European Election Abstention Demo
 
-D1 is a plan for a research helper that could help facilitators explore why a group may not be taking an intended action. It is meant to organize evidence and suggest questions for people to review—not to decide what the “real cause” is.
+A local Streamlit prototype for reviewing possible barriers in one fictional case. Its outputs are hypotheses for a facilitator, not findings about real voters, individuals, or causes.
 
-## Who it is for
+## Setup and offline run
 
-Facilitators and researchers who work with groups and want to understand what may be getting in the way of a shared or expected action.
+From the repository root:
 
-## How it is intended to help
+```sh
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-A facilitator would provide a short, anonymized summary of what people said in group discussions and what an aggregate survey found. The planned tool would look for different possible barriers, show when more than one may be present, and point out when the evidence is too limited to draw a useful conclusion. A person would review the results and decide what to investigate or do next.
+The app defaults to **mock** mode and uses its bundled synthetic fixture. This path works offline and needs no API key. Run the offline tests with:
 
-Possible barriers include:
+```sh
+python -m pytest -q
+```
 
-- People may be missing or misunderstanding important information.
-- People may disagree about priorities or trade-offs.
-- People may doubt that the proposed action will make a difference.
-- The group may be unsure how to coordinate.
-- Practical obstacles—such as time, resources, access, authority, safety, or skills—may prevent action.
-- There may not be enough reliable evidence to tell.
+## Optional live mode
 
-The project plan proposes using Liquid AI decision models to help examine these possibilities. Several barriers may apply at once.
+Live mode is an explicit selection in the app and requires `LIQUID_API_KEY`. `D1_MODEL` is optional; the adapter defaults to `d1:free`.
 
-## What it does not do
+```sh
+export LIQUID_API_KEY='your-key'
+# Optional:
+export D1_MODEL='d1:free'
+streamlit run app.py
+```
 
-D1 is not designed to prove why people acted or did not act. Its possible explanations would be hypotheses for a human to consider, not findings of fact. It is not meant to judge, score, target, or persuade individual people, or to make decisions on a facilitator’s behalf.
+You can instead keep these variables in an ignored local `.env` file and load them into the shell before launching. The app reads process environment variables; it does not load `.env` itself. For a POSIX shell:
 
-## Current status
+```sh
+set -a
+. ./.env
+set +a
+streamlit run app.py
+```
 
-This repository currently contains a design plan, not a working application. There is no program to install or run yet, and the project has not settled on a specific real-world example to demonstrate. The plan describes a possible local web app and the steps needed to build and test it.
+The implementation assumes the `typesafe-sdk` / `TypeSafeClient` `system_one` contract at `https://api.liquid.ai`. SDK compatibility, that contract, and model availability remain unverified until a configured live smoke test succeeds. Live failures remain errors and never fall back to mock output. `.env.example` is intentionally absent; never commit credentials.
 
-## Privacy and data
+## What the prototype shows
 
-The design calls for using anonymized summaries and aggregate survey results—not names, raw recordings, full transcripts, or individual survey records. Any future use of an external AI service would need to follow the service’s data-handling terms and the project’s privacy safeguards.
+It evaluates six independent, potentially co-existing hypotheses: **perception gap**, **values conflict**, **response-efficacy gap**, **collective-efficacy gap**, **structural/capability barrier**, and **insufficient evidence**. Probabilities are independent and do not sum to one.
 
-Reference reports currently kept on the developer’s computer are not included in this repository while their reuse conditions are reviewed. The project also calls for fictional examples during development.
+Focus-group themes and aggregate survey evidence are shown separately. Focus-group themes do not estimate prevalence. Survey counts are shown over the valid-response denominator; item-missing responses remain separate, and fixture validation checks response counts against that denominator.
 
-## Learn more
+Local triage statuses are **leading** (one hypothesis crosses the illustrative high threshold), **mixed** (multiple do), **possible** (one or more cross the low threshold), **insufficient** (evidence is inadequate), **unsupported** (none crosses the low threshold; this does not establish absence), and **unavailable** (no valid result). Optional live **Score** and **Choice** outputs may also be shown; Choice is only a suggested diagnostic probe. Human review can remain pending or be marked confirmed, corrected, or rejected, with a reason for completed decisions. Review state is held in the Streamlit session only.
 
-- [Project design and proposed build plan](D1.md)
-- [Data sources, context, and limitations](data/README.md)
+## Data and limits
+
+The app loads only the fictional fixture in `data/synthetic_cases.json`. Local PDFs under `data/external/` are ignored and excluded from the app and fixtures. The prototype is limited to synthetic cases and summarized focus-group themes plus aggregate survey evidence: do not enter raw transcripts or recordings, respondent-level rows, personal or confidential data, or information for individual profiling. It has no persistent storage and makes no causal claims. Triage thresholds are illustrative and unvalidated; neither synthetic examples nor outputs establish real-world prevalence, causes, or model accuracy.
+
+See [D1.md](D1.md) for the design plan and [data/README.md](data/README.md) for source provenance and limitations.

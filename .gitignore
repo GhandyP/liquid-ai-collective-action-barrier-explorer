@@ -3,3 +3,24 @@
 
 # Local source files; keep out of public commits until reuse is reviewed
 /data/external/
+
+# Python bytecode and test/tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local credentials and generated runtime/test output
+.env
+.streamlit/secrets.toml
+.coverage
+.coverage.*
+htmlcov/
+*.log

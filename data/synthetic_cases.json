@@ -1,0 +1,69 @@
+[
+  {
+    "case_id": "synthetic-riverbridge-abstention-001",
+    "synthetic": true,
+    "language": "en",
+    "topic": "Fictional local-election abstention demonstration",
+    "desired_action": {
+      "description": "Cast a ballot in the fictional Riverbridge municipal election",
+      "actor_group": "Fictional eligible adult residents of Riverbridge",
+      "time_horizon": "During the fictional municipal election in spring 2026",
+      "observable_success": "A resident who chooses to participate casts one ballot before polls close"
+    },
+    "observed_non_action": {
+      "description": "Some fictional eligible residents did not cast a ballot",
+      "period": "The fictional Riverbridge municipal election in spring 2026"
+    },
+    "evidence": [
+      {
+        "id": "RB-FG-01",
+        "type": "focus_group_summary",
+        "study_id": "RB-FICTIONAL-STUDY-01",
+        "collection_date": "2026-03",
+        "population": "Fictional adult residents who considered whether to vote",
+        "participants_n": 8,
+        "sampling_method": "Invented convenience sample for a software demonstration; no participants were recruited",
+        "moderator_prompt": "What, if anything, made voting in the fictional local election feel worthwhile or difficult?",
+        "theme": "The invented discussion contains both doubts about whether one vote affects local decisions and practical scheduling concerns.",
+        "dissenting_views": [
+          "Some fictional participants value choosing between candidates even when they doubt the election's effect.",
+          "Others describe work schedules as the main obstacle rather than low perceived impact."
+        ],
+        "anonymized_quote": "I am not sure one vote would change what happens.",
+        "limitations": [
+          "Every participant, theme, and quotation is fictional and created only to demonstrate the schema.",
+          "A small invented focus group cannot estimate how common any view is among residents."
+        ]
+      },
+      {
+        "id": "RB-SURVEY-01",
+        "type": "survey_aggregate",
+        "study_id": "RB-FICTIONAL-SURVEY-01",
+        "collection_date": "2026-03",
+        "population": "Fictional eligible adult residents invited to the demonstration survey",
+        "question": "How much do you believe voting in the fictional Riverbridge municipal election can influence local decisions?",
+        "response_scale": [
+          "a_lot",
+          "some",
+          "very_little",
+          "not_at_all"
+        ],
+        "respondents_invited_n": 120,
+        "responses_received_n": 72,
+        "valid_n": 68,
+        "item_missing_n": 4,
+        "response_counts": {
+          "a_lot": 8,
+          "some": 19,
+          "very_little": 24,
+          "not_at_all": 17
+        },
+        "sampling_method": "Invented opt-in demonstration survey; no invitations were sent and no responses were collected",
+        "limitations": [
+          "All counts are invented and do not describe real residents or a real election.",
+          "The response distribution cannot establish why anyone abstained or represent a population."
+        ]
+      }
+    ]
+  }
+]
