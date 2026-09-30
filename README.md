@@ -1,6 +1,6 @@
-# D1 — Synthetic European Election Abstention Demo
+# D1 — European Election Abstention Diagnostic Prototype
 
-A local Streamlit prototype for reviewing possible barriers in one fictional case. Its outputs are hypotheses for a facilitator, not findings about real voters, individuals, or causes.
+A local Streamlit prototype for reviewing possible barriers in two cases: a fictional synthetic demonstration and an explicitly curated real-evidence example. Its outputs are hypotheses for a facilitator, not findings about real voters, individuals, or causes.
 
 ## Setup and offline run
 
@@ -13,7 +13,14 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app defaults to **mock** mode and uses its bundled synthetic fixture. This path works offline and needs no API key. Run the offline tests with:
+The sidebar has two independent selectors:
+
+- **Case:** `Synthetic demonstration` or `Curated real evidence`.
+- **Run mode:** `mock` or `live`.
+
+The default is mock mode, which works offline and needs no API key. Choosing the curated case does not enable live mode; the case and run mode are selected independently. The curated case is a manually prepared, bounded structured summary from two published European Parliament reports: a 2009 post-electoral survey and 2012 abstention focus groups. The raw PDFs and broader archive remain local and ignored; the app does not ingest or send those files.
+
+Run the offline tests with:
 
 ```sh
 python -m pytest -q
@@ -39,18 +46,20 @@ set +a
 streamlit run app.py
 ```
 
-The implementation assumes the `typesafe-sdk` / `TypeSafeClient` `system_one` contract at `https://api.liquid.ai`. SDK compatibility, that contract, and model availability remain unverified until a configured live smoke test succeeds. Live failures remain errors and never fall back to mock output. `.env.example` is intentionally absent; never commit credentials.
+The `typesafe-sdk` / `TypeSafeClient` `system_one` setup follows Liquid's official Decision Models documentation for `https://api.liquid.ai`. A configured live API/model call has not yet been smoke-tested. Live failures remain errors and never fall back to mock output. `.env.example` is intentionally absent; never commit credentials.
 
 ## What the prototype shows
 
 It evaluates six independent, potentially co-existing hypotheses: **perception gap**, **values conflict**, **response-efficacy gap**, **collective-efficacy gap**, **structural/capability barrier**, and **insufficient evidence**. Probabilities are independent and do not sum to one.
 
-Focus-group themes and aggregate survey evidence are shown separately. Focus-group themes do not estimate prevalence. Survey counts are shown over the valid-response denominator; item-missing responses remain separate, and fixture validation checks response counts against that denominator.
+Focus-group themes and aggregate survey evidence are shown separately. Focus-group themes are exploratory and do not estimate prevalence. In the synthetic fixture, survey counts use the fixture's valid-response denominator and item-missing responses remain separate. The curated survey record instead preserves rounded, published multi-select percentages for non-voters (a base reported as 57% of the total sample). Up to three responses were allowed, so percentages need not sum to 100%; the source facts used here provide no respondent count, and none is invented.
 
 Local triage statuses are **leading** (one hypothesis crosses the illustrative high threshold), **mixed** (multiple do), **possible** (one or more cross the low threshold), **insufficient** (evidence is inadequate), **unsupported** (none crosses the low threshold; this does not establish absence), and **unavailable** (no valid result). Optional live **Score** and **Choice** outputs may also be shown; Choice is only a suggested diagnostic probe. Human review can remain pending or be marked confirmed, corrected, or rejected, with a reason for completed decisions. Review state is held in the Streamlit session only.
 
 ## Data and limits
 
-The app loads only the fictional fixture in `data/synthetic_cases.json`. Local PDFs under `data/external/` are ignored and excluded from the app and fixtures. The prototype is limited to synthetic cases and summarized focus-group themes plus aggregate survey evidence: do not enter raw transcripts or recordings, respondent-level rows, personal or confidential data, or information for individual profiling. It has no persistent storage and makes no causal claims. Triage thresholds are illustrative and unvalidated; neither synthetic examples nor outputs establish real-world prevalence, causes, or model accuracy.
+The app loads the fictional fixture in `data/synthetic_cases.json` or the manually curated structured case in `data/curated_cases.json`. Local published PDFs and archive files under `data/external/` remain ignored and are excluded from the app and fixtures. The curated record contains paraphrased qualitative themes and an aggregate survey distribution with provenance and limitations; it is not raw report text, a respondent-level dataset, or a merged participant sample.
+
+Do not enter raw transcripts or recordings, respondent-level rows, personal or confidential data, or information for individual profiling. The prototype has no persistent storage and makes no causal claims. Triage thresholds are illustrative and unvalidated; neither synthetic examples nor the curated aggregates establish real-world prevalence, causes, or model accuracy. Outputs are hypotheses for human review, not causes or judgments about individuals.
 
 See [D1.md](D1.md) for the design plan and [data/README.md](data/README.md) for source provenance and limitations.

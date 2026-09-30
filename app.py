@@ -1,4 +1,4 @@
-"""Local Streamlit interface for the fictional D1 case demonstration."""
+"""Local Streamlit interface for synthetic and curated real D1 evidence."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import streamlit as st
 from src.app_state import (
     AppStateError,
     HumanReviewValidationError,
+    load_curated_case,
     load_synthetic_case,
     record_human_review,
     run_case,
@@ -33,138 +34,99 @@ TRIAGE_MESSAGES = {
     "unavailable": "Triage is unavailable because a valid result was not produced.",
 }
 
+CASE_LOADERS = {
+    "Synthetic demonstration": load_synthetic_case,
+    "Curated real evidence": load_curated_case,
+}
+
 
 def main() -> None:
-    st.set_page_config(page_title="D1 Hypothesis Review", layout="wide")
-    st.title("D1 — Fictional Case Hypothesis Review")
+    st.set_page_config(page_title="D1 Evidence Hypothesis Review", layout="wide")
+    st.title("D1 — Evidence-Informed Hypothesis Review")
     st.warning(
-        "Results are hypotheses based on supplied evidence, not causal findings, "
-        "facts about a population, or judgments about individuals. This demo is "
-        "not for profiling, targeting, or persuading people."
+        "Outputs are hypotheses, not causal findings, population claims, or judgments "
+        "about individuals. Do not use them for profiling, targeting, or persuasion."
     )
 
+    selected_case_name = st.sidebar.radio(
+        "Case",
+        options=tuple(CASE_LOADERS),
+        index=0,
+        key="case_selection",
+    )
     selected_mode = st.sidebar.radio("Run mode", options=("mock", "live"), index=0)
-    st.sidebar.caption("Mock is the offline default. Live is opt-in and requires LIQUID_API_KEY; D1_MODEL is optional.")
-    st.sidebar.caption("The Liquid SDK, API, and model contract are unverified. Live failures remain errors.")
-    st.caption("Use synthetic or anonymized summaries only. Do not enter personal, confidential, transcript, or respondent-row data.")
+    st.sidebar.caption("Mock is the offline default. Selecting live is an explicit opt-in and requires LIQUID_API_KEY; D1_MODEL is optional.")
+    st.sidebar.caption("The SDK setup follows Liquid's Decision Models documentation; a live API/model call has not been smoke-tested. Failures remain errors and never fall back to mock.")
+    st.caption("Use anonymized summaries only. Do not enter personal, confidential, transcript, or respondent-row data.")
+
+    previous_case_name = st.session_state.get("_active_case_selection")
+    if previous_case_name != selected_case_name:
+        _clear_case_bound_state()
+        st.session_state["_active_case_selection"] = selected_case_name
+    if st.session_state.get("run_case_selection") != selected_case_name and (
+        "run_state" in st.session_state or "human_review" in st.session_state
+    ):
+        _clear_case_bound_state()
 
     try:
-        fixture_case = load_synthetic_case()
+        case_fixture = CASE_LOADERS[selected_case_name]()
     except AppStateError as error:
         st.error(str(error))
         st.stop()
         return
 
-    focus_evidence = next(
-        item for item in fixture_case["evidence"] if item["type"] == "focus_group_summary"
-    )
-    survey_evidence = next(
-        item for item in fixture_case["evidence"] if item["type"] == "survey_aggregate"
-    )
+    evidence_by_type = _evidence_by_type(case_fixture)
+    focus_evidence = evidence_by_type["focus_group_summary"]
+    survey_evidence = evidence_by_type["survey_aggregate"]
+    is_synthetic = selected_case_name == "Synthetic demonstration"
 
     with st.form("case_run_form"):
         st.subheader("Case")
-        action_column, observation_column = st.columns(2)
-        with action_column:
-            action_description = st.text_input(
-                "Desired action", value=fixture_case["desired_action"]["description"]
-            )
-            actor_group = st.text_input(
-                "Actor group", value=fixture_case["desired_action"]["actor_group"]
-            )
-            time_horizon = st.text_input(
-                "Time horizon", value=fixture_case["desired_action"]["time_horizon"]
-            )
-            observable_success = st.text_input(
-                "Observable success", value=fixture_case["desired_action"]["observable_success"]
-            )
-        with observation_column:
-            observed_non_action = st.text_input(
-                "Observed non-action", value=fixture_case["observed_non_action"]["description"]
-            )
-            observation_period = st.text_input(
-                "Period", value=fixture_case["observed_non_action"]["period"]
-            )
+        if is_synthetic:
+            action_values, observation_values = _render_editable_case(case_fixture)
+        else:
+            _render_curated_case(case_fixture, focus_evidence, survey_evidence)
+            action_values = observation_values = None
 
         st.subheader("Separate evidence summaries")
         focus_column, survey_column = st.columns(2)
         with focus_column:
-            st.markdown("#### Focus-group summary")
-            st.caption(
-                f"{focus_evidence['study_id']} · {focus_evidence['collection_date']} · "
-                f"{focus_evidence['participants_n']} fictional participants"
-            )
-            focus_theme = st.text_area(
-                "Anonymized theme summary — not raw transcript",
-                value=focus_evidence["theme"],
-                height=110,
-            )
-            dissent_text = st.text_area(
-                "Dissenting summary points — one per line",
-                value="\n".join(focus_evidence.get("dissenting_views", [])),
-                height=90,
-            )
-            st.caption("Focus-group themes do not estimate how common a view is.")
-            for limitation in focus_evidence["limitations"]:
-                st.caption(f"Limitation: {limitation}")
-
+            focus_values = _render_focus_evidence(focus_evidence, editable=is_synthetic)
         with survey_column:
-            st.markdown("#### Aggregate survey")
-            st.caption(
-                f"{survey_evidence['study_id']} · {survey_evidence['collection_date']} · "
-                f"{survey_evidence['sampling_method']}"
+            survey_question = _render_survey_evidence(
+                survey_evidence, editable=is_synthetic
             )
-            survey_question = st.text_area(
-                "Aggregate item wording",
-                value=survey_evidence["question"],
-                height=110,
-            )
-            st.caption(
-                f"Invited: {survey_evidence['respondents_invited_n']} · "
-                f"responses received: {survey_evidence['responses_received_n']} · "
-                f"valid denominator: {survey_evidence['valid_n']} · "
-                f"item missing: {survey_evidence['item_missing_n']}"
-            )
-            count_columns = st.columns(len(survey_evidence["response_scale"]))
-            for column, option in zip(count_columns, survey_evidence["response_scale"]):
-                with column:
-                    st.metric(
-                        option.replace("_", " "),
-                        f"{survey_evidence['response_counts'][option]}/{survey_evidence['valid_n']}",
-                    )
-            st.caption("Each count is shown over the valid-response denominator; the synthetic distribution is not causal or representative.")
-            for limitation in survey_evidence["limitations"]:
-                st.caption(f"Limitation: {limitation}")
 
         run_submitted = st.form_submit_button(f"Run selected mode: {selected_mode}")
 
     if run_submitted:
-        case = deepcopy(fixture_case)
-        case["desired_action"].update(
-            {
-                "description": action_description,
-                "actor_group": actor_group,
-                "time_horizon": time_horizon,
-                "observable_success": observable_success,
-            }
-        )
-        case["observed_non_action"].update(
-            {"description": observed_non_action, "period": observation_period}
-        )
-        case["evidence"][0]["theme"] = focus_theme
-        dissenting_views = [line.strip() for line in dissent_text.splitlines() if line.strip()]
-        if dissenting_views:
-            case["evidence"][0]["dissenting_views"] = dissenting_views
-        else:
-            case["evidence"][0].pop("dissenting_views", None)
-        case["evidence"][1]["question"] = survey_question
+        case = deepcopy(case_fixture)
+        if is_synthetic:
+            case["desired_action"].update(action_values)
+            case["observed_non_action"].update(observation_values)
+            case_evidence = _evidence_by_type(case)
+            case_focus = case_evidence["focus_group_summary"]
+            case_survey = case_evidence["survey_aggregate"]
+            focus_theme, dissent_text = focus_values
+            case_focus["theme"] = focus_theme
+            dissenting_views = [
+                line.strip() for line in dissent_text.splitlines() if line.strip()
+            ]
+            if dissenting_views:
+                case_focus["dissenting_views"] = dissenting_views
+            else:
+                case_focus.pop("dissenting_views", None)
+            case_survey["question"] = survey_question
 
         st.session_state["run_state"] = run_case(case, selected_mode)
+        st.session_state["run_case_selection"] = selected_case_name
         st.session_state["human_review"] = {"status": "pending", "override_reason": None}
         st.session_state["review_decision"] = "pending"
         st.session_state["review_reason"] = ""
 
-    run_state = st.session_state.get("run_state")
+    run_state = None
+    if st.session_state.get("run_case_selection") == selected_case_name:
+        run_state = st.session_state.get("run_state")
     if run_state is None:
         st.info(f"Run status: not run. Selected mode: {selected_mode}.")
         return
@@ -173,6 +135,15 @@ def main() -> None:
     if run_state["run_status"] == "error":
         st.error(run_state["error"]["message"])
         return
+
+    _render_interpretation_guide()
+
+    if run_state["run_status"] == "mock":
+        st.warning(
+            "Illustrative mock result — this profile is a fixed demo fixture. It was NOT "
+            "calculated from the evidence shown above and does not change when the case "
+            "changes. Select live mode to evaluate the selected case with the model."
+        )
 
     result = run_state["result"]
     triage = run_state["triage"]
@@ -231,6 +202,211 @@ def main() -> None:
     recorded_review = st.session_state.get("human_review", {"status": "pending"})
     if recorded_review["status"] != "pending" and recorded_review.get("override_reason"):
         st.caption(f"Review reason: {recorded_review['override_reason']}")
+
+
+def _render_interpretation_guide() -> None:
+    with st.expander("How to interpret these results"):
+        st.markdown(
+            """
+- **A probability is not a population share.** "Response-efficacy gap: 74%" does not mean
+  74% of people have that barrier. It is the model's estimated support for that hypothesis
+  given the supplied evidence.
+- **Probabilities are independent.** Several barriers can coexist; the six values do not sum
+  to 100% and are not competing for one cause.
+- **`mixed`** means several hypotheses are plausible at once. It does not select one cause.
+- **`leading`** names the strongest hypothesis only; it is not proof of a cause.
+- **`insufficient`** means the evidence cannot distinguish the hypotheses — it does not show
+  that no barrier exists.
+- **Score (0–3)** is a position on an ordered rubric, not a percentage. 2.10 sits between
+  levels 2 and 3.
+- **The suggested next probe** is a question worth investigating, not an action taken.
+- Every output is a **hypothesis for human review** — never a causal finding, a fact about a
+  population, or a judgment about an individual.
+            """
+        )
+
+
+def _clear_case_bound_state() -> None:
+    for key in (
+        "run_state",
+        "run_case_selection",
+        "human_review",
+        "review_decision",
+        "review_reason",
+    ):
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+def _evidence_by_type(case: dict) -> dict:
+    return {item["type"]: item for item in case["evidence"]}
+
+
+def _render_editable_case(case_fixture: dict) -> tuple[dict, dict]:
+    action_column, observation_column = st.columns(2)
+    with action_column:
+        action = case_fixture["desired_action"]
+        action_values = {
+            "description": st.text_input("Desired action", value=action["description"]),
+            "actor_group": st.text_input("Actor group", value=action["actor_group"]),
+            "time_horizon": st.text_input("Time horizon", value=action["time_horizon"]),
+            "observable_success": st.text_input(
+                "Observable success", value=action["observable_success"]
+            ),
+        }
+    with observation_column:
+        observation = case_fixture["observed_non_action"]
+        observation_values = {
+            "description": st.text_input(
+                "Observed non-action", value=observation["description"]
+            ),
+            "period": st.text_input("Period", value=observation["period"]),
+        }
+    return action_values, observation_values
+
+
+def _render_curated_case(case: dict, focus_evidence: dict, survey_evidence: dict) -> None:
+    st.caption("Curated real-evidence fields are read-only and cannot be overwritten in this interface.")
+    action_column, observation_column = st.columns(2)
+    with action_column:
+        st.markdown("#### Desired action")
+        for label, field in (
+            ("Description", "description"),
+            ("Actor group", "actor_group"),
+            ("Time horizon", "time_horizon"),
+            ("Observable success", "observable_success"),
+        ):
+            st.write(f"**{label}:** {case['desired_action'][field]}")
+    with observation_column:
+        st.markdown("#### Observed non-action")
+        st.write(f"**Description:** {case['observed_non_action']['description']}")
+        st.write(f"**Period:** {case['observed_non_action']['period']}")
+
+    st.markdown("#### Curated source details")
+    st.write(f"**Case topic:** {case.get('topic', 'Not supplied')}")
+    for evidence in (focus_evidence, survey_evidence):
+        _render_source_details(evidence)
+
+
+def _render_focus_evidence(
+    evidence: dict, *, editable: bool
+) -> tuple[str, str] | None:
+    st.markdown("#### Focus-group summary")
+    st.caption(
+        f"{evidence['study_id']} · {evidence['collection_date']} · "
+        f"{evidence.get('sampling_method', 'Sampling method not supplied')}"
+    )
+    if editable:
+        st.caption(f"{evidence['participants_n']} fictional participants")
+        focus_theme = st.text_area(
+            "Anonymized theme summary — not raw transcript",
+            value=evidence["theme"],
+            height=110,
+        )
+        dissent_text = st.text_area(
+            "Dissenting summary points — one per line",
+            value="\n".join(evidence.get("dissenting_views", [])),
+            height=90,
+        )
+        st.caption("Focus-group themes do not estimate how common a view is.")
+    else:
+        if "group_size_range" in evidence:
+            st.write(f"**Participant range:** {evidence['group_size_range']}")
+        if "participants_n" in evidence:
+            st.write(
+                "**Schema-required participant lower bound (not the study total):** "
+                f"{evidence['participants_n']}"
+            )
+        if "participant_count_note" in evidence:
+            st.write(f"**Participant-count note:** {evidence['participant_count_note']}")
+        st.write(f"**Focus-group theme:** {evidence['theme']}")
+        if evidence.get("dissenting_views"):
+            st.write("**Dissenting summary points:**")
+            for dissent in evidence["dissenting_views"]:
+                st.write(f"- {dissent}")
+        st.caption("Focus-group themes do not estimate how common a view is.")
+    _render_limitations(evidence)
+    if editable:
+        return focus_theme, dissent_text
+    return None
+
+
+def _render_survey_evidence(evidence: dict, *, editable: bool) -> str | None:
+    st.markdown("#### Aggregate survey")
+    st.caption(
+        f"{evidence['study_id']} · {evidence['collection_date']} · "
+        f"{evidence['sampling_method']}"
+    )
+    if editable:
+        survey_question = st.text_area(
+            "Aggregate item wording",
+            value=evidence["question"],
+            height=110,
+        )
+        st.caption(
+            f"Invited: {evidence['respondents_invited_n']} · "
+            f"responses received: {evidence['responses_received_n']} · "
+            f"valid denominator: {evidence['valid_n']} · "
+            f"item missing: {evidence['item_missing_n']}"
+        )
+        count_columns = st.columns(len(evidence["response_scale"]))
+        for column, option in zip(count_columns, evidence["response_scale"]):
+            with column:
+                st.metric(
+                    option.replace("_", " "),
+                    f"{evidence['response_counts'][option]}/{evidence['valid_n']}",
+                )
+        st.caption("Each count is shown over the valid-response denominator; the synthetic distribution is not causal or representative.")
+    else:
+        st.write(f"**Survey question:** {evidence['question']}")
+        st.write(f"**Percentage base:** {evidence['percentage_base']}")
+        if evidence.get("allows_multiple_answers"):
+            max_answers = evidence.get("max_answers_per_respondent")
+            if max_answers is not None:
+                st.caption(
+                    "Multiple answers were allowed; up to "
+                    f"{max_answers} answers per respondent."
+                )
+            else:
+                st.caption("Multiple answers were allowed.")
+        else:
+            st.caption("One answer per respondent was allowed.")
+
+        st.caption(
+            "Values are rounded source percentages. They are not normalized and are "
+            "not expected to sum to 100%."
+        )
+        percentage_columns = st.columns(3)
+        percentages = evidence["response_percentages"]
+        for index, option in enumerate(evidence["response_scale"]):
+            with percentage_columns[index % len(percentage_columns)]:
+                st.write(option)
+                st.metric("Reported percentage", f"{percentages[option]:g}%")
+    _render_limitations(evidence)
+    if editable:
+        return survey_question
+    return None
+
+
+def _render_limitations(evidence: dict) -> None:
+    limitations = evidence.get("limitations", evidence.get("limitation", []))
+    if isinstance(limitations, str):
+        limitations = [limitations]
+    for limitation in limitations:
+        st.caption(f"Limitation: {limitation}")
+
+
+def _render_source_details(evidence: dict) -> None:
+    st.markdown(f"**{evidence['type'].replace('_', ' ').title()} source**")
+    for label, field in (
+        ("Source filename", "source_filename"),
+        ("Source title", "source_title"),
+        ("Source reference", "source_reference"),
+    ):
+        if evidence.get(field):
+            st.write(f"**{label}:** {evidence[field]}")
+    if evidence.get("source_url"):
+        st.write(f"**Source URL:** {evidence['source_url']}")
 
 
 def _run_app() -> None:

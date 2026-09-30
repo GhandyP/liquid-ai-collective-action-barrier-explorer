@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from src.app_state import (
+    AppStateError,
     HumanReviewValidationError,
+    load_curated_case,
     load_synthetic_case,
     mock_result,
     record_human_review,
@@ -19,6 +22,7 @@ from src.response_normalizer import NOUL_ANSWERS
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "data" / "synthetic_cases.json"
+CURATED_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "data" / "curated_cases.json"
 
 
 class FakeQuestion:
@@ -78,6 +82,43 @@ class AppStateTests(unittest.TestCase):
         self.assertNotIn("local test change", second["evidence"][0]["limitations"])
         self.assertEqual(FIXTURE_PATH.read_text(encoding="utf-8"), fixture_before)
 
+    def test_curated_fixture_loading_returns_detached_case_without_mutating_fixture(self) -> None:
+        fixture_before = CURATED_FIXTURE_PATH.read_text(encoding="utf-8")
+        first = load_curated_case()
+        self.assertTrue(first["curated"])
+        self.assertFalse(first["synthetic"])
+        original_theme = first["evidence"][0]["theme"]
+        first["evidence"][0]["limitations"].append("local test change")
+        first["evidence"][1]["response_percentages"]["Other"] = 99
+
+        second = load_curated_case()
+
+        self.assertEqual(second["evidence"][0]["theme"], original_theme)
+        self.assertNotIn("local test change", second["evidence"][0]["limitations"])
+        self.assertEqual(second["evidence"][1]["response_percentages"]["Other"], 6)
+        self.assertEqual(CURATED_FIXTURE_PATH.read_text(encoding="utf-8"), fixture_before)
+
+    def test_curated_fixture_loader_requires_one_curated_non_synthetic_valid_case(self) -> None:
+        invalid_fixtures = (
+            ([], "exactly one case"),
+            ([{"curated": True, "synthetic": True}], "explicitly curated, non-synthetic"),
+            ([{"curated": False, "synthetic": False}], "explicitly curated, non-synthetic"),
+            (
+                [
+                    {"curated": True, "synthetic": False},
+                    {"curated": True, "synthetic": False},
+                ],
+                "exactly one case",
+            ),
+            ([{"curated": True, "synthetic": False}], "did not pass validation"),
+        )
+        for cases, message in invalid_fixtures:
+            with self.subTest(message=message, case_count=len(cases)):
+                with patch("src.app_state._CURATED_FIXTURE_PATH") as fixture_path:
+                    fixture_path.open.return_value = StringIO(json.dumps(cases))
+                    with self.assertRaisesRegex(AppStateError, message):
+                        load_curated_case()
+
     def test_mock_execution_works_without_live_credentials_or_adapter_call(self) -> None:
         case = load_synthetic_case()
         with patch("src.app_state.run_live", side_effect=AssertionError("live called")) as live:
@@ -92,6 +133,18 @@ class AppStateTests(unittest.TestCase):
         self.assertIn("response_efficacy_level", state["result"])
         self.assertIn("next_diagnostic_probe", state["result"])
         self.assertEqual(json.loads(json.dumps(state)), state)
+
+    def test_curated_case_runs_in_mock_mode_without_live_credentials_or_adapter_call(self) -> None:
+        case = load_curated_case()
+        with patch("src.app_state.run_live", side_effect=AssertionError("live called")) as live:
+            state = run_case(case, "mock")
+
+        live.assert_not_called()
+        self.assertEqual(state["run_status"], "mock")
+        self.assertEqual(state["run_mode"], "mock")
+        self.assertIsNone(state["error"])
+        self.assertEqual(state["result"]["run_status"], "mock")
+        self.assertEqual(set(state["result"]["hypotheses"]), set(NOUL_ANSWERS))
 
     def test_mock_result_is_fresh_and_probabilities_remain_independent(self) -> None:
         first = mock_result()
@@ -132,6 +185,23 @@ class AppStateTests(unittest.TestCase):
             state["result"]["next_diagnostic_probe"]["choice"],
             "audit_practical_constraints",
         )
+
+    def test_curated_case_uses_injected_live_client_without_mock_fallback(self) -> None:
+        client = FakeClient(response=live_response())
+
+        state = run_case(
+            load_curated_case(),
+            "live",
+            live_client=client,
+            live_sdk_module=fake_sdk(),
+        )
+
+        self.assertEqual(client.calls, 1)
+        self.assertEqual(state["run_status"], "live")
+        self.assertEqual(state["run_mode"], "live")
+        self.assertEqual(state["result"]["run_status"], "live")
+        self.assertEqual(state["triage"]["status"], "mixed")
+        self.assertNotEqual(state.get("result"), mock_result())
 
     def test_live_failure_remains_error_without_echo_or_mock_fallback(self) -> None:
         secret_marker = "sk-test-very-secret-value-123456"

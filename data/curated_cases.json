@@ -1,0 +1,107 @@
+[
+  {
+    "case_id": "european-parliament-abstention-2009",
+    "curated": true,
+    "synthetic": false,
+    "language": "en",
+    "topic": "Abstention in the 2009 European Parliament election",
+    "desired_action": {
+      "description": "Vote in the 2009 European Parliament election",
+      "actor_group": "People eligible to vote in the European Parliament election",
+      "time_horizon": "During the 2009 European Parliament election period",
+      "observable_success": "An eligible person casts a ballot in the election"
+    },
+    "observed_non_action": {
+      "description": "Some eligible people did not vote in the 2009 European Parliament election",
+      "period": "The 2009 European Parliament election"
+    },
+    "evidence": [
+      {
+        "id": "EP-ABSTENTION-FG-2012",
+        "type": "focus_group_summary",
+        "study_id": "European Parliament abstention focus groups, 2012",
+        "collection_date": "2012-02-06 to 2012-02-17",
+        "population": "Focus-group participants discussing abstention from the 2009 European Parliament election",
+        "participants_n": 24,
+        "participant_count_note": "The schema-required integer is a conservative lower bound for the three groups in one Member State (3 groups × the reported minimum of 8 participants), not the total study count. The source reports three groups per Member State and 8–12 participants per group; no overall participant total is asserted here.",
+        "groups_per_member_state": 3,
+        "group_size_range": "8–12 participants per group",
+        "sampling_method": "Qualitative focus-group design with three groups per Member State and 8–12 participants per group; explicitly non-representative",
+        "moderator_prompt": "The supplied source facts establish that the focus groups concerned abstention; exact moderator wording is not transcribed here.",
+        "theme": "Reported themes included lack of knowledge or information about candidates and the European Parliament, and difficulty connecting EU-level politics with daily life.",
+        "limitations": [
+          "The focus groups are explicitly non-representative; qualitative themes do not estimate how common views are in the population.",
+          "Group size was reported as a range of 8–12; participants_n is a conservative lower bound for one Member State's three groups, not an exact study total.",
+          "Themes are paraphrased from the report; no raw quotations or participant-level data are included.",
+          "The study was conducted three years after the 2009 survey, so the two evidence streams are not the same participant sample or time point."
+        ],
+        "source_filename": "focus_groups_abstainers_2012_en.pdf",
+        "source_title": "‘Impulsive’ and ‘Unspecified’ Abstainers: Voting Barriers and Incentives",
+        "source_url": "https://www.europarl.europa.eu/pdf/eurobarometre/2012/research/121126_EurobarometerQualitativeStudy_Abstainers_EN.pdf",
+        "source_reference": "pp. 2–5"
+      },
+      {
+        "id": "EP-ABSTENTION-SURVEY-2009",
+        "type": "survey_aggregate",
+        "study_id": "European Parliament post-electoral survey, 2009",
+        "collection_date": "2009-06-12 to 2009-07-07",
+        "population": "Respondents who did not vote in the recent European Parliament elections",
+        "sampling_method": "Face-to-face post-electoral survey conducted across the 27 EU Member States and coordinated by TNS Opinion & Social; this record retains the source's non-voter aggregate only",
+        "question": "What are the main reasons why you did NOT vote in the recent European Parliament elections?",
+        "response_scale": [
+          "Lack of trust/dissatisfaction with politics generally",
+          "Not interested in politics as such",
+          "Vote has no consequences/vote does not change anything",
+          "On holiday/away",
+          "Too busy/no time/work",
+          "Do not know much about EU/EP/elections",
+          "Rarely/never vote",
+          "Not interested in European matters",
+          "Not satisfied with EP",
+          "Sick/health",
+          "Lack of public debate/electoral campaign",
+          "Family/leisure",
+          "Opposed to EU",
+          "Registration/voting card problems",
+          "Did not know there were elections",
+          "Other",
+          "DK"
+        ],
+        "distribution_kind": "reported_percentages",
+        "response_percentages": {
+          "Lack of trust/dissatisfaction with politics generally": 28,
+          "Not interested in politics as such": 17,
+          "Vote has no consequences/vote does not change anything": 17,
+          "On holiday/away": 10,
+          "Too busy/no time/work": 10,
+          "Do not know much about EU/EP/elections": 10,
+          "Rarely/never vote": 10,
+          "Not interested in European matters": 9,
+          "Not satisfied with EP": 8,
+          "Sick/health": 7,
+          "Lack of public debate/electoral campaign": 6,
+          "Family/leisure": 5,
+          "Opposed to EU": 4,
+          "Registration/voting card problems": 3,
+          "Did not know there were elections": 2,
+          "Other": 6,
+          "DK": 3
+        },
+        "percentage_base": "Respondents who did not vote in the recent European Parliament elections; this subgroup was 57% of the total sample.",
+        "allows_multiple_answers": true,
+        "max_answers_per_respondent": 3,
+        "limitations": [
+          "Percentages are rounded reported values. Up to three answers were allowed, so the percentages are not expected to sum to 100% and have not been normalized.",
+          "The source facts provide no respondent count for this base; no respondent counts are inferred.",
+          "The denominator is non-voters (57% of the total sample), not the full survey sample.",
+          "Aggregate survey results describe reported reasons and do not establish individual motives or causal effects.",
+          "The 2012 qualitative study notes that the survey and focus groups are separated by time and use different methods; this record does not treat them as one sample."
+        ],
+        "source_filename": "post_electoral_survey_2009_en.pdf",
+        "source_title": "Special Eurobarometer 320 / Wave 71.3 – Post-electoral survey 2009",
+        "source_url": "https://www.europarl.europa.eu/pdf/eurobarometre/28_07/EB71.3_post-electoral_final_report_EN.pdf",
+        "source_reference": "QK4b, p. 27"
+      }
+    ]
+  }
+]

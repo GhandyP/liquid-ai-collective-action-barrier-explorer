@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from src.app_state import load_curated_case
 from src.liquid_client import run_live
 from src.response_normalizer import NOUL_ANSWERS
 
@@ -93,6 +94,30 @@ class LiquidClientTests(unittest.TestCase):
                 "human_review_mixed_case",
             },
         )
+
+    def test_curated_case_normalizes_live_and_sends_only_bounded_structured_state(self) -> None:
+        case = load_curated_case()
+        client = FakeClient(response=load_response())
+
+        normalized = run_live(
+            case,
+            client=client,
+            sdk_module=FAKE_SDK,
+            environ={},
+        )
+
+        self.assertEqual(normalized["run_status"], "live")
+        self.assertNotIn("mock", normalized)
+        self.assertEqual(len(client.calls), 1)
+        provider_state = json.loads(client.calls[0]["state"])
+        self.assertEqual(provider_state, case)
+        survey = next(item for item in provider_state["evidence"] if item["type"] == "survey_aggregate")
+        self.assertEqual(survey["response_percentages"], case["evidence"][1]["response_percentages"])
+        self.assertIn("did not vote", survey["percentage_base"])
+        self.assertNotIn("response_counts", survey)
+        self.assertNotIn("respondents_n", survey)
+        self.assertNotIn("raw_pdf_text", client.calls[0]["state"])
+        self.assertTrue(all("raw_text" not in item for item in provider_state["evidence"]))
 
     def test_missing_api_key_returns_error_without_loading_sdk(self) -> None:
         with patch("src.liquid_client.importlib.import_module") as import_module:

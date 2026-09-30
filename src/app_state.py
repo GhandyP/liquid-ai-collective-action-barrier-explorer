@@ -17,6 +17,7 @@ from src.triage_policy import triage_result
 
 
 _FIXTURE_PATH = Path(__file__).resolve().parents[1] / "data" / "synthetic_cases.json"
+_CURATED_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "data" / "curated_cases.json"
 _MOCK_RESULT: dict[str, Any] = {
     "run_status": "mock",
     "model": "local-illustrative-mock",
@@ -61,7 +62,7 @@ _MAX_REASON_LENGTH = 240
 
 
 class AppStateError(RuntimeError):
-    """The local synthetic fixture could not be safely loaded."""
+    """A local case fixture could not be safely loaded."""
 
 
 class HumanReviewValidationError(ValueError):
@@ -85,6 +86,29 @@ def load_synthetic_case() -> dict[str, Any]:
         return validate_case(case)
     except CaseValidationError:
         raise AppStateError("The synthetic case fixture did not pass validation.") from None
+
+
+def load_curated_case() -> dict[str, Any]:
+    """Load and validate the sole explicitly curated fixture as a detached case."""
+    try:
+        with _CURATED_FIXTURE_PATH.open(encoding="utf-8") as fixture_file:
+            cases = json.load(fixture_file)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise AppStateError("The curated case fixture could not be loaded.") from None
+
+    if not isinstance(cases, list) or len(cases) != 1:
+        raise AppStateError("The curated fixture must contain exactly one case.")
+    case = cases[0]
+    if (
+        not isinstance(case, Mapping)
+        or case.get("curated") is not True
+        or case.get("synthetic") is not False
+    ):
+        raise AppStateError("The fixture must contain one explicitly curated, non-synthetic case.")
+    try:
+        return validate_case(case)
+    except CaseValidationError:
+        raise AppStateError("The curated case fixture did not pass validation.") from None
 
 
 def mock_result() -> dict[str, Any]:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from copy import deepcopy
+import math
 import re
 from typing import Any
 
@@ -42,6 +43,9 @@ def validate_case(case: Mapping[str, Any]) -> dict[str, Any]:
         _require_text(case, "case_id", "case", errors)
     if "exploratory" in case and not isinstance(case["exploratory"], bool):
         errors.append("exploratory: must be a boolean when supplied")
+    for field in ("curated", "synthetic"):
+        if field in case and not isinstance(case[field], bool):
+            errors.append(f"{field}: must be a boolean when supplied")
 
     action = case.get("desired_action")
     if not isinstance(action, Mapping):
@@ -189,11 +193,65 @@ def _validate_survey(item: Mapping[str, Any], path: str, errors: list[str]) -> N
         _require_text(item, field, path, errors)
 
     response_scale = _require_text_list(item, "response_scale", path, errors)
+    _validate_limitations(item, path, errors)
+
+    count_fields = (
+        "respondents_invited_n",
+        "responses_received_n",
+        "valid_n",
+        "item_missing_n",
+        "response_counts",
+    )
+    percentage_fields = (
+        "distribution_kind",
+        "response_percentages",
+        "percentage_base",
+        "allows_multiple_answers",
+    )
+    if any(field in item for field in percentage_fields):
+        if any(field in item for field in count_fields):
+            errors.append(
+                f"{path}.distribution_kind: percentage and exact-count fields cannot be combined"
+            )
+        if item.get("distribution_kind") != "reported_percentages":
+            errors.append(
+                f"{path}.distribution_kind: must be 'reported_percentages' for a percentage distribution"
+            )
+        _require_text(item, "percentage_base", path, errors)
+        if "allows_multiple_answers" in item and not isinstance(
+            item["allows_multiple_answers"], bool
+        ):
+            errors.append(f"{path}.allows_multiple_answers: must be a boolean when supplied")
+
+        percentages = item.get("response_percentages")
+        if not isinstance(percentages, Mapping) or not percentages:
+            errors.append(
+                f"{path}.response_percentages: must be a non-empty object of reported percentages"
+            )
+            return
+
+        if any(not isinstance(option, str) or not option.strip() for option in percentages):
+            errors.append(f"{path}.response_percentages: option names must be non-empty strings")
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not 0 <= value <= 100
+            or not math.isfinite(value)
+            for value in percentages.values()
+        ):
+            errors.append(
+                f"{path}.response_percentages: values must be finite numbers from 0 to 100"
+            )
+        if response_scale is not None and set(percentages) != set(response_scale):
+            errors.append(
+                f"{path}.response_percentages: keys must match the response_scale options exactly"
+            )
+        return
+
     invited_n = _require_count(item, "respondents_invited_n", path, errors)
     received_n = _require_count(item, "responses_received_n", path, errors)
     valid_n = _require_count(item, "valid_n", path, errors)
     missing_n = _require_count(item, "item_missing_n", path, errors)
-    _validate_limitations(item, path, errors)
 
     if invited_n is not None and received_n is not None and received_n > invited_n:
         errors.append(f"{path}.responses_received_n: cannot exceed respondents_invited_n")
