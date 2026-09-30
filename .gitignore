@@ -1,0 +1,5 @@
+# Local Pi runtime state
+.atl/
+
+# Local source files; keep out of public commits until reuse is reviewed
+/data/external/
