@@ -133,8 +133,9 @@ class LiquidClientTests(unittest.TestCase):
         import_module.assert_not_called()
 
     def test_provider_exception_returns_safe_error_not_mock_data(self) -> None:
-        private_marker = "provider-private-detail-marker"
-        client = FakeClient(failure=RuntimeError("provider details: " + private_marker))
+        private_marker = "private-marker-provider-detail"
+        exception_message = "provider details: " + private_marker
+        client = FakeClient(failure=TimeoutError(exception_message))
 
         result = run_live(
             {"summary": "Fictional aggregate summary"},
@@ -145,6 +146,9 @@ class LiquidClientTests(unittest.TestCase):
 
         self.assertEqual(result["run_status"], "error")
         self.assertEqual(result["error"]["code"], "provider_error")
+        self.assertEqual(result["error"]["message"], "The live provider request failed.")
+        self.assertIn("TimeoutError", result["error"]["diagnostic"])
+        self.assertNotIn(exception_message, json.dumps(result))
         self.assertNotIn(private_marker, json.dumps(result))
         self.assertNotIn("mock", result)
 
@@ -177,8 +181,17 @@ class LiquidClientTests(unittest.TestCase):
         self.assertNotIn(private_value, json.dumps(result))
         self.assertEqual(client.calls, [])
 
-    def test_malformed_provider_response_is_error_not_mock(self) -> None:
-        client = FakeClient(response={"answers": {}})
+    def test_malformed_provider_response_includes_safe_path_and_shape(self) -> None:
+        client = FakeClient(
+            response={
+                "answers": {
+                    "perception_gap": {
+                        "probability": 0.5,
+                        "rationale": "private-marker-response-value",
+                    }
+                }
+            }
+        )
 
         result = run_live(
             {"summary": "Fictional aggregate summary"},
@@ -189,6 +202,10 @@ class LiquidClientTests(unittest.TestCase):
 
         self.assertEqual(result["run_status"], "error")
         self.assertEqual(result["error"]["code"], "malformed_response")
+        self.assertIn("answers.values_conflict", result["error"]["message"])
+        self.assertIn("perception_gap", result["error"]["diagnostic"])
+        self.assertNotIn("private-marker", json.dumps(result))
+        self.assertLessEqual(len(result["error"]["diagnostic"]), 400)
         self.assertNotIn("mock", result)
 
 

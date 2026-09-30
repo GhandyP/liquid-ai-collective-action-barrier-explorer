@@ -17,6 +17,7 @@ from src.privacy import PrivacyError, prepare_case_for_request
 from src.response_normalizer import (
     TAXONOMY_VERSION,
     ResponseNormalizationError,
+    describe_response_shape,
     normalize_response,
 )
 
@@ -100,15 +101,27 @@ def run_live(
             state=state,
             questions=questions,
         )
-    except Exception:
-        return _error_result("provider_error", "The live provider request failed.")
+    except Exception as error:
+        return _error_result(
+            "provider_error",
+            "The live provider request failed.",
+            diagnostic=type(error).__name__,
+        )
 
     try:
         return normalize_response(result, model=selected_model, taxonomy_version=taxonomy_version)
     except ResponseNormalizationError as error:
-        return _error_result("malformed_response", str(error))
+        return _error_result(
+            "malformed_response",
+            str(error),
+            diagnostic=_response_shape_diagnostic(result),
+        )
     except Exception:
-        return _error_result("malformed_response", "The live response could not be normalized.")
+        return _error_result(
+            "malformed_response",
+            "The live response could not be normalized.",
+            diagnostic=_response_shape_diagnostic(result),
+        )
 
 
 def build_questions(sdk_module: Any = None) -> dict[str, Any]:
@@ -202,12 +215,25 @@ def _load_sdk() -> Any:
         raise _SdkUnavailable from None
 
 
-def _error_result(code: str, message: str) -> dict[str, Any]:
-    bounded_message = message[:_MAX_ERROR_LENGTH]
-    return {
-        "run_status": "error",
-        "error": {
-            "code": code,
-            "message": bounded_message,
-        },
+def _error_result(
+    code: str,
+    message: str,
+    *,
+    diagnostic: str | None = None,
+) -> dict[str, Any]:
+    error: dict[str, str] = {
+        "code": code,
+        "message": message[:_MAX_ERROR_LENGTH],
     }
+    if diagnostic is not None:
+        error["diagnostic"] = diagnostic[:400]
+    return {"run_status": "error", "error": error}
+
+
+def _response_shape_diagnostic(result: Any) -> str:
+    try:
+        return json.dumps(
+            describe_response_shape(result), ensure_ascii=True, separators=(",", ":")
+        )
+    except Exception:
+        return f"uninspectable ({type(result).__name__})"

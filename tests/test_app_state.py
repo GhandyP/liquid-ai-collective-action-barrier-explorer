@@ -222,6 +222,42 @@ class AppStateTests(unittest.TestCase):
         self.assertNotIn(secret_marker, json.dumps(state))
         self.assertNotEqual(state.get("result"), mock_result())
 
+    def test_live_error_detail_and_diagnostic_are_passed_through(self) -> None:
+        safe_message = (
+            "Response normalization failed at answers.values_conflict: "
+            "required Noul answer is missing"
+        )
+        diagnostic = '{"type":"dict","answers":{"keys":["perception_gap"]}}'
+        response = {
+            "run_status": "error",
+            "error": {
+                "code": "malformed_response",
+                "message": safe_message,
+                "diagnostic": diagnostic,
+            },
+        }
+
+        with patch("src.app_state.run_live", return_value=response):
+            state = run_case(load_synthetic_case(), "live")
+
+        self.assertEqual(state["error"]["message"], safe_message)
+        self.assertEqual(state["error"]["diagnostic"], diagnostic)
+
+    def test_live_error_without_detail_keeps_the_generic_message(self) -> None:
+        response = {
+            "run_status": "error",
+            "error": {"code": "malformed_response"},
+        }
+
+        with patch("src.app_state.run_live", return_value=response):
+            state = run_case(load_synthetic_case(), "live")
+
+        self.assertEqual(
+            state["error"]["message"],
+            "The live response could not be safely normalized.",
+        )
+        self.assertNotIn("diagnostic", state["error"])
+
     def test_mock_mode_never_uses_an_injected_live_client(self) -> None:
         client = FakeClient(response=live_response())
 

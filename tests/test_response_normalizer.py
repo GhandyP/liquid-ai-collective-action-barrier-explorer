@@ -10,6 +10,7 @@ import unittest
 from src.response_normalizer import (
     NOUL_ANSWERS,
     ResponseNormalizationError,
+    describe_response_shape,
     normalize_response,
 )
 
@@ -71,6 +72,104 @@ class ResponseNormalizerTests(unittest.TestCase):
         self.assertEqual(normalized["response_efficacy_level"]["score"], 1.5)
         self.assertEqual(normalized["next_diagnostic_probe"]["choice"], "collect_more_evidence")
         self.assertEqual(normalized["next_diagnostic_probe"]["probabilities"]["collect_more_evidence"], 0.7)
+
+    def test_describes_mapping_shape_without_exposing_values(self) -> None:
+        response = {
+            "metadata": "private-marker-top-level",
+            "answers": {
+                "values_conflict": {
+                    "probability": 0.45,
+                    "rationale": "private-marker-answer-value",
+                },
+                "attribute_answer": SimpleNamespace(
+                    field_name="private-marker-attribute-value"
+                ),
+            },
+        }
+
+        shape = describe_response_shape(response)
+        rendered = json.dumps(shape)
+
+        self.assertEqual(shape["type"], "dict")
+        self.assertIn("metadata", shape["keys"])
+        self.assertEqual(shape["answers"]["type"], "dict")
+        self.assertIn("values_conflict", shape["answers"]["keys"])
+        values_answer = next(
+            item for item in shape["answers"]["items"] if item["key"] == "values_conflict"
+        )
+        self.assertEqual(values_answer["fields"], ["probability", "rationale"])
+        self.assertIn("field_name", rendered)
+        self.assertNotIn("private-marker", rendered)
+        self.assertNotIn("0.45", rendered)
+
+    def test_describes_attribute_style_shape_without_exposing_values(self) -> None:
+        response = SimpleNamespace(
+            request_id="private-marker-request",
+            answers=SimpleNamespace(
+                values_conflict=SimpleNamespace(
+                    probability="private-marker-probability",
+                    rationale="private-marker-rationale",
+                )
+            ),
+        )
+
+        shape = describe_response_shape(response)
+        rendered = json.dumps(shape)
+
+        self.assertEqual(shape["type"], "SimpleNamespace")
+        self.assertIn("request_id", shape["keys"])
+        self.assertIn("values_conflict", shape["answers"]["keys"])
+        self.assertEqual(
+            shape["answers"]["items"][0]["fields"], ["probability", "rationale"]
+        )
+        self.assertNotIn("private-marker", rendered)
+
+    def test_shape_descriptor_bounds_names_and_each_string(self) -> None:
+        response = {
+            **{f"top_{index:02}": "private-marker" for index in range(30)},
+            "answers": {
+                f"answer_{index:02}": {
+                    f"field_{field_index:02}": "private-marker"
+                    for field_index in range(20)
+                }
+                for index in range(30)
+            },
+        }
+
+        shape = describe_response_shape(response)
+
+        self.assertEqual(len(shape["keys"]), 25)
+        self.assertEqual(shape["keys"][-1], "...")
+        self.assertEqual(len(shape["answers"]["keys"]), 25)
+        self.assertEqual(shape["answers"]["keys"][-1], "...")
+        self.assertEqual(len(shape["answers"]["items"]), 24)
+        self.assertEqual(len(shape["answers"]["items"][0]["fields"]), 13)
+        self.assertEqual(shape["answers"]["items"][0]["fields"][-1], "...")
+
+        def assert_bounded_strings(value) -> None:
+            if isinstance(value, str):
+                self.assertLessEqual(len(value), 200)
+            elif isinstance(value, dict):
+                for key, item in value.items():
+                    assert_bounded_strings(key)
+                    assert_bounded_strings(item)
+            elif isinstance(value, list):
+                for item in value:
+                    assert_bounded_strings(item)
+
+        assert_bounded_strings(shape)
+        self.assertNotIn("private-marker", json.dumps(shape))
+
+    def test_shape_descriptor_never_raises_for_uninspectable_objects(self) -> None:
+        class Uninspectable:
+            @property
+            def __dict__(self):
+                raise RuntimeError("private-marker-property-error")
+
+        shape = describe_response_shape(Uninspectable())
+
+        self.assertIn("uninspectable (Uninspectable)", shape["type"])
+        self.assertNotIn("private-marker", json.dumps(shape))
 
     def test_normalizes_attribute_style_noul_probabilities(self) -> None:
         probability_values = {

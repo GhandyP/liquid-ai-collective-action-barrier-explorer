@@ -25,6 +25,30 @@ HYPOTHESIS_LABELS = {
     "insufficient_evidence": "Insufficient evidence",
 }
 
+HYPOTHESIS_DESCRIPTIONS = {
+    "perception_gap": (
+        "Relevant facts or how the action connects to outcomes are misunderstood or missing."
+    ),
+    "values_conflict": (
+        "People may agree on the facts but disagree about priorities, principles, trade-offs, "
+        "or who bears the costs."
+    ),
+    "response_efficacy_gap": (
+        "People doubt that the proposed action will make a meaningful difference."
+    ),
+    "collective_efficacy_gap": (
+        "People doubt the group can coordinate or influence the outcome together."
+    ),
+    "structural_barrier": (
+        "Practical constraints—such as time, resources, authority, access, safety, or skills—"
+        "make action difficult or impossible."
+    ),
+    "insufficient_evidence": (
+        "The available information is too thin or contradictory to distinguish the other "
+        "hypotheses responsibly."
+    ),
+}
+
 TRIAGE_MESSAGES = {
     "leading": "One hypothesis is above the illustrative high threshold; it is not established as a cause.",
     "mixed": "Several hypotheses are plausible and may coexist. Review the evidence before choosing a next step.",
@@ -134,6 +158,10 @@ def main() -> None:
     st.metric("Run status", run_state["run_status"])
     if run_state["run_status"] == "error":
         st.error(run_state["error"]["message"])
+        diagnostic = run_state["error"].get("diagnostic")
+        if diagnostic:
+            with st.expander("Diagnostic details (safe)"):
+                st.code(diagnostic)
         return
 
     _render_interpretation_guide()
@@ -154,6 +182,7 @@ def main() -> None:
         left, right = st.columns([3, 1])
         with left:
             st.write(HYPOTHESIS_LABELS[name])
+            st.caption(HYPOTHESIS_DESCRIPTIONS[name])
             st.progress(probability)
         with right:
             st.metric("Probability", f"{probability:.1%}")

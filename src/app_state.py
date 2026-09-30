@@ -159,7 +159,24 @@ def run_case(
             )
         if not isinstance(live_response, Mapping) or live_response.get("run_status") != "live":
             code = _known_live_error_code(live_response)
-            return _error_state(run_mode, code, _LIVE_ERROR_MESSAGES[code], usable_evidence)
+            error = live_response.get("error") if isinstance(live_response, Mapping) else None
+            message = (
+                error.get("message")
+                if isinstance(error, Mapping) and isinstance(error.get("message"), str)
+                else _LIVE_ERROR_MESSAGES[code]
+            )
+            diagnostic = (
+                error.get("diagnostic")
+                if isinstance(error, Mapping) and isinstance(error.get("diagnostic"), str)
+                else None
+            )
+            return _error_state(
+                run_mode,
+                code,
+                message,
+                usable_evidence,
+                diagnostic=diagnostic,
+            )
         normalized = live_response
 
     try:
@@ -238,15 +255,24 @@ def _error_state(
     code: str,
     message: str,
     usable_evidence: bool,
+    *,
+    diagnostic: str | None = None,
 ) -> dict[str, Any]:
     error_code = code if code in _LIVE_ERROR_MESSAGES else "provider_error"
-    bounded_message = _LIVE_ERROR_MESSAGES.get(error_code, message)[:160]
+    generic_message = _LIVE_ERROR_MESSAGES.get(error_code, _LIVE_ERROR_MESSAGES["provider_error"])
+    safe_message = message if isinstance(message, str) and message else generic_message
+    error: dict[str, str] = {
+        "code": error_code,
+        "message": safe_message[:160],
+    }
+    if isinstance(diagnostic, str):
+        error["diagnostic"] = diagnostic[:400]
     return {
         "run_status": "error",
         "run_mode": run_mode,
         "result": None,
         "triage": triage_result({"run_status": "error"}, usable_evidence=usable_evidence),
-        "error": {"code": error_code, "message": bounded_message},
+        "error": error,
     }
 
 

@@ -150,6 +150,111 @@ def _is_numeric(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def describe_response_shape(result: Any) -> dict[str, Any]:
+    """Describe response structure without exposing any field values.
+
+    Names are sorted and bounded at each inspected level. The result contains
+    only type names, field names, and truncation markers, so it is suitable for
+    bounded diagnostics rather than logging provider payloads.
+    """
+    try:
+        top_names, top_truncated = _shape_names(result, 24)
+        descriptor: dict[str, Any] = {
+            "type": _shape_type_name(result),
+            "keys": _with_truncation_marker(top_names, top_truncated),
+        }
+        answers = _get(result, "answers")
+        if answers is not _MISSING:
+            descriptor["answers"] = _describe_answers_shape(answers)
+        return descriptor
+    except BaseException:
+        return {"type": f"uninspectable ({_shape_type_name(result)})"[:200]}
+
+
+def _describe_answers_shape(answers: Any) -> dict[str, Any]:
+    answer_names, answers_truncated = _shape_names(answers, 24)
+    items: list[dict[str, Any]] = []
+    for name in answer_names:
+        answer = _get(answers, name)
+        if answer is _MISSING:
+            items.append({"key": name, "type": "unavailable", "fields": []})
+            continue
+        field_names, fields_truncated = _shape_names(answer, 12)
+        items.append(
+            {
+                "key": name,
+                "type": _shape_type_name(answer),
+                "fields": _with_truncation_marker(field_names, fields_truncated),
+            }
+        )
+    return {
+        "type": _shape_type_name(answers),
+        "keys": _with_truncation_marker(answer_names, answers_truncated),
+        "items": items,
+    }
+
+
+def _shape_names(value: Any, limit: int) -> tuple[list[str], bool]:
+    if isinstance(value, Mapping):
+        raw_names = value.keys()
+    else:
+        names: set[str] = set()
+        try:
+            instance_fields = object.__getattribute__(value, "__dict__")
+        except AttributeError:
+            instance_fields = None
+        if instance_fields is not None and isinstance(instance_fields, Mapping):
+            names.update(name for name in instance_fields.keys() if type(name) is str)
+
+        value_type = type(value)
+        try:
+            hierarchy = type.__getattribute__(value_type, "__mro__")
+        except BaseException:
+            hierarchy = ()
+        for owner in hierarchy:
+            try:
+                namespace = type.__getattribute__(owner, "__dict__")
+            except BaseException:
+                continue
+            slots = namespace.get("__slots__", ())
+            if type(slots) is str:
+                slots = (slots,)
+            if isinstance(slots, (tuple, list)):
+                names.update(name for name in slots if type(name) is str and not name.startswith("__"))
+            annotations = namespace.get("__annotations__", {})
+            if isinstance(annotations, Mapping):
+                names.update(
+                    name
+                    for name in annotations.keys()
+                    if type(name) is str and not name.startswith("__")
+                )
+            names.update(
+                name
+                for name, member in namespace.items()
+                if type(name) is str and isinstance(member, property)
+            )
+        raw_names = names
+
+    sorted_names = sorted(
+        (name[:120] for name in raw_names if type(name) is str)
+    )
+    return sorted_names[:limit], len(sorted_names) > limit
+
+
+def _with_truncation_marker(names: list[str], truncated: bool) -> list[str]:
+    return [*names, "..."] if truncated else names
+
+
+def _shape_type_name(value: Any) -> str:
+    try:
+        name = type.__getattribute__(type(value), "__name__")
+        if type(name) is str and name:
+            return name[:120]
+    except BaseException:
+        pass
+    return "unknown"
+
+
 def _get(value: Any, key: str) -> Any:
     if isinstance(value, Mapping):
         try:
