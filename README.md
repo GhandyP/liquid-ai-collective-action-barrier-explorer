@@ -1,6 +1,6 @@
 # D1 — European Election Abstention Diagnostic Prototype
 
-![Group Action Barrier Mapper](<Portada horizontal 169 proyecto open source.png>)
+![Group Action Barrier Mapper](./Portada%20horizontal%20169%20proyecto%20open%20source.png)
 
 > **Group Action Barrier Mapper** is an open-source research and facilitation toolkit for exploring why a group may not take an intended action. D1 is a local Streamlit prototype that turns bounded, anonymized evidence into several testable hypotheses for human review. It does **not** identify causes, profile people, or make decisions about individuals.
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | Interface | A local Streamlit application for reviewing one prepared case at a time |
 | Cases | A fictional synthetic demonstration and one manually curated European election abstention case |
-| Modes | An offline `mock` mode and an explicitly selected `live` mode using Liquid AI Decision Models |
+| Modes | An offline `mock` mode and an explicitly selected `live` mode using an OpenRouter model through a prompt-based System One Adapter bridge |
 | Output | Six independent hypothesis probabilities, a local triage status, an optional Score, and a suggested next diagnostic probe |
 | Human role | A facilitator reviews the evidence and can record a pending, confirmed, corrected, or rejected decision |
 | Storage | In-memory Streamlit session state only; there is no database or account system |
@@ -20,7 +20,7 @@
 
 When a group does not take an intended action, the same visible behavior can have very different explanations. People may misunderstand the relevant facts, disagree about priorities, doubt that an action will work, be unable to coordinate, or face a practical constraint such as missing authority or limited time.
 
-D1 keeps these possibilities separate instead of forcing them into one definitive label. It asks a bounded decision model to assess each hypothesis independently, then applies a small, inspectable local policy to describe the level of uncertainty.
+D1 keeps these possibilities separate instead of forcing them into one definitive label. In live mode, it sends typed decision prompts through a System One Adapter bridge to the explicitly selected OpenRouter model, then applies a small, inspectable local policy to describe the level of uncertainty. This is not Liquid AI's native D1 Decision Model.
 
 The six hypotheses are:
 
@@ -45,8 +45,10 @@ From the repository root:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+python -m streamlit run app.py
 ```
+
+Run Streamlit with the virtual environment's Python (`python -m streamlit run app.py` while the venv is active, or directly `.venv/bin/python -m streamlit run app.py`). A globally installed Streamlit may use a different interpreter without the project dependencies, so use the project venv for live mode.
 
 Streamlit will print a local URL, normally `http://localhost:8501`. Open it in a browser and follow this path:
 
@@ -59,7 +61,7 @@ Streamlit will print a local URL, normally `http://localhost:8501`. Open it in a
 
 ### Important: mock output is fixed
 
-The mock profile is a deterministic illustrative fixture. It is useful for demonstrating the UI and running tests, but it is **not calculated from the evidence currently shown on screen**. Editing the synthetic case does not change the mock profile. Select live mode only when you deliberately want to send the selected structured case to Liquid AI.
+The mock profile is a deterministic illustrative fixture. It is useful for demonstrating the UI and running tests, but it is **not calculated from the evidence currently shown on screen**. Editing the synthetic case does not change the mock profile. Select live mode only when you deliberately want to send the selected structured case to the explicitly selected OpenRouter model.
 
 ## The two bundled cases
 
@@ -83,7 +85,7 @@ The application uses the structured record in `data/curated_cases.json`. It does
 Each run follows the same bounded flow:
 
 1. **Load a prepared case.** The app validates the action, observed non-action, evidence IDs, and supported evidence fields.
-2. **Choose a mode explicitly.** Mock mode uses the local fixture; live mode uses the Liquid adapter.
+2. **Choose a mode explicitly.** Mock mode uses the local fixture; live mode sends typed decision prompts through the System One Adapter bridge to OpenRouter.
 3. **Evaluate independent questions.** The live request contains the selected structured case and bounded questions for the six hypotheses. It does not ask the model to produce an open-ended causal explanation.
 4. **Normalize the response.** The application keeps only known, finite values and rejects malformed or unexpected results.
 5. **Apply local triage.** The deterministic policy labels the profile as `leading`, `mixed`, `possible`, `insufficient`, `unsupported`, or `unavailable`.
@@ -123,16 +125,31 @@ Live and mock results may also include two other bounded decision primitives:
 
 ## Optional live mode
 
-Live mode is an explicit opt-in and requires `LIQUID_API_KEY`. `D1_MODEL` is optional and defaults to `d1:free`.
+Live mode is an explicit opt-in and requires both `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`. The model must be selected explicitly; D1 has no default and does not read `D1_MODEL` or use `d1:free`.
 
 ```sh
-export LIQUID_API_KEY='your-key'
-# Optional:
-export D1_MODEL='d1:free'
-streamlit run app.py
+export OPENROUTER_API_KEY='your-key'
+# Replace this placeholder with the exact model identifier you selected on OpenRouter:
+export OPENROUTER_MODEL='provider/model-name'
+python -m streamlit run app.py
 ```
 
-The adapter uses `typesafe-sdk`, `TypeSafeClient`, and the `https://api.liquid.ai` base URL. The live API/model configuration has **not** yet been smoke-tested against a real provider call. The normal test suite uses offline fakes and fixtures.
+The adapter uses `system-one-adapter[openai]` with `OpenAIProvider` and OpenRouter's Chat Completions API root, `https://openrouter.ai/api/v1`. Noul, Score, and Choice question objects are sent through the adapter as prompts; this is a prompt-based System One bridge, not Liquid AI's native D1 Decision Model and not an equivalence claim. A live provider call has not been verified end to end; the normal test suite uses offline fakes and fixtures.
+
+OpenRouter routes requests to model providers. Data retention and training use depend on OpenRouter's current settings and the selected model/provider. In particular, do not assume that Liquid models listed on OpenRouter inherit the retention or training terms of Liquid AI's native D1 Decision Model; check the current applicable terms before sending data. Use synthetic data unless the selected route's handling is acceptable.
+
+For a local ignored `.env` file, set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` there; D1 does not load `.env` automatically. Manually load the file into the process environment using the shell example below.
+
+### Troubleshooting live mode
+
+Failures stay visible as errors; the app never substitutes a mock result. Open **Diagnostic details (safe)** on the error panel to see bounded structural information (field and type names only — never response values, payloads, or credentials).
+
+| Message | What it means | What to do |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` is required for live requests. / `OPENROUTER_MODEL` is required for live requests. | Live mode requires both variables; there is no implicit model fallback. | Set the API key and an exact OpenRouter model identifier in the process environment. `D1_MODEL` is ignored. |
+| `The System One OpenAI adapter is unavailable for live mode.` | The required adapter or question SDK dependency is unavailable to this Python interpreter. | Install `requirements.txt` in the project venv and start with `.venv/bin/python -m streamlit run app.py`. |
+| `The live request failed; no mock result was substituted.` | The provider call raised an exception (for example a timeout). The diagnostic shows the exception class name only. | Retry only after checking provider status and configuration; the diagnostic does not expose a request or response payload. |
+| `The live response could not be safely normalized.` | The OpenRouter model response did not match the adapter's expected `answers` contract. | The diagnostic shows the failing path (for example `answers.values_conflict`) and received key/type structure only; share it without payload values. |
 
 You can keep the variables in an ignored local `.env` file, but the application does not load `.env` automatically. Load it into the process environment before starting Streamlit, for example in a POSIX shell:
 
@@ -140,7 +157,7 @@ You can keep the variables in an ignored local `.env` file, but the application 
 set -a
 . ./.env
 set +a
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 Never commit credentials. Do not add API keys, access tokens, raw transcripts, respondent-level rows, or other confidential material to the repository or to a live request.
@@ -156,7 +173,7 @@ D1 is deliberately narrow. Before using live mode:
 - Preserve missing, dissenting, and contradictory evidence instead of removing it to make the profile look clearer.
 - Treat a missing signal as uncertainty, not as proof that a barrier is absent.
 
-The local privacy checks are bounded safeguards, not a complete anonymization or redaction system. Human review remains necessary before any research decision or intervention.
+The local privacy checks are bounded safeguards, not a complete anonymization or redaction system. Human review remains necessary before any research decision or intervention. Before live use, verify current OpenRouter and selected model-provider retention/training terms. For Liquid models offered through OpenRouter, do not infer that Liquid AI's native D1 data terms apply; keep requests synthetic unless the selected route's current handling is acceptable.
 
 ## Repository layout
 
@@ -170,7 +187,7 @@ The local privacy checks are bounded safeguards, not a complete anonymization or
 ├── src/
 │   ├── app_state.py              # Fixture loading, run orchestration, review state
 │   ├── case_schema.py             # Case and evidence validation
-│   ├── liquid_client.py            # Optional Liquid AI adapter
+│   ├── liquid_client.py            # Optional OpenRouter System One Adapter bridge
 │   ├── privacy.py                  # Bounded live-request privacy checks
 │   ├── response_normalizer.py      # Provider response normalization
 │   └── triage_policy.py            # Deterministic status policy
@@ -193,10 +210,10 @@ The local privacy checks are bounded safeguards, not a complete anonymization or
 Run the offline suite from the repository root:
 
 ```sh
-python -m pytest -q
+.venv/bin/python -m pytest -q
 ```
 
-The tests cover case validation, app-state orchestration, triage rules, privacy checks, response normalization, and the Liquid adapter through fakes and saved fixtures. They do not require a network connection and do not prove that a real live API/model configuration works.
+The tests cover case validation, app-state orchestration, triage rules, privacy checks, response normalization, and the OpenRouter adapter boundary through fakes and saved fixtures. They do not require a network connection and do not prove that a real live API/model configuration works.
 
 ## Current scope and limitations
 
