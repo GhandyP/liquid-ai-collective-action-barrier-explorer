@@ -252,7 +252,11 @@ def _load_adapter_runtime() -> Any:
             providers = importlib.import_module(f"{_ADAPTER_MODULE}.providers")
             provider_type = getattr(providers, "OpenAIProvider")
         except Exception:
-            raise _AdapterIncompatible from None
+            try:
+                openai = importlib.import_module(f"{_ADAPTER_MODULE}.providers.openai")
+                provider_type = getattr(openai, "OpenAIProvider")
+            except Exception:
+                raise _AdapterIncompatible from None
 
     try:
         return SimpleNamespace(

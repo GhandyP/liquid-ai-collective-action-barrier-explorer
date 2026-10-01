@@ -9,7 +9,13 @@ import unittest
 from unittest.mock import patch
 
 from src.app_state import load_curated_case
-from src.liquid_client import API_BASE_URL, run_live
+from src.liquid_client import (
+    API_BASE_URL,
+    _AdapterIncompatible,
+    _QUESTION_MODULE,
+    _load_adapter_runtime,
+    run_live,
+)
 from src.response_normalizer import NOUL_ANSWERS
 
 
@@ -72,6 +78,36 @@ class FakeSystemOneAdapterClient:
 
 
 class OpenRouterAdapterTests(unittest.TestCase):
+    def test_adapter_runtime_resolves_provider_from_openai_submodule(self) -> None:
+        provider_type = type("OfflineOpenAIProvider", (), {})
+        modules = {
+            "system_one_adapter": SimpleNamespace(
+                SystemOneAdapterClient=FakeSystemOneAdapterClient
+            ),
+            "system_one_adapter.providers": SimpleNamespace(),
+            "system_one_adapter.providers.openai": SimpleNamespace(
+                OpenAIProvider=provider_type
+            ),
+            _QUESTION_MODULE: FAKE_QUESTIONS,
+        }
+
+        with patch(
+            "src.liquid_client.importlib.import_module",
+            side_effect=modules.__getitem__,
+        ):
+            runtime = _load_adapter_runtime()
+
+        self.assertIs(runtime.OpenAIProvider, provider_type)
+        self.assertIs(runtime.SystemOneAdapterClient, FakeSystemOneAdapterClient)
+
+        modules["system_one_adapter.providers.openai"] = SimpleNamespace()
+        with patch(
+            "src.liquid_client.importlib.import_module",
+            side_effect=modules.__getitem__,
+        ):
+            with self.assertRaises(_AdapterIncompatible):
+                _load_adapter_runtime()
+
     def test_injected_client_receives_serialized_state_and_all_question_types(self) -> None:
         case = {
             "case_id": "FICTIONAL-CASE-01",
