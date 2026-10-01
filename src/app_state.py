@@ -52,9 +52,9 @@ _REQUIRED_PROBES = frozenset(
         "human_review_mixed_case",
     }
 )
-_SAFE_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._-]{0,79}\Z")
+_SAFE_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9:._/-]{0,79}\Z")
 _SECRET_LIKE = re.compile(
-    r"(?i)(?:\b(?:liquid[_ -]?api[_ -]?key|api[_ -]?key|access[_ -]?token|client[_ -]?secret|password|authorization)\b\s*[:=]\s*\S+"
+    r"(?i)(?:\b(?:openrouter[_ -]?api[_ -]?key|typesafe[_ -]?api[_ -]?key|liquid[_ -]?api[_ -]?key|api[_ -]?key|access[_ -]?token|client[_ -]?secret|password|authorization)\b\s*[:=]\s*\S+"
     r"|\bbearer\s+\S+|\bsk-[A-Za-z0-9_-]{12,}\b|\b(?:ghp|github_pat|hf|glpat)-[A-Za-z0-9_-]{16,}\b)"
 )
 _REVIEW_DECISIONS = frozenset({"pending", "confirmed", "corrected", "rejected"})
@@ -121,12 +121,12 @@ def run_case(
     run_mode: str,
     *,
     live_client: Any = None,
-    live_sdk_module: Any = None,
+    live_adapter_module: Any = None,
 ) -> dict[str, Any]:
     """Validate and execute exactly the explicitly selected mock or live mode.
 
     Live adapter failures remain bounded errors and are never replaced with a
-    mock result. The optional client and SDK module are for offline injection.
+    mock result. The optional client and adapter runtime are for offline injection.
     The returned object contains no submitted case text or raw exception.
     """
     if not isinstance(run_mode, str) or run_mode not in {"mock", "live"}:
@@ -146,8 +146,8 @@ def run_case(
         live_kwargs: dict[str, Any] = {}
         if live_client is not None:
             live_kwargs["client"] = live_client
-        if live_sdk_module is not None:
-            live_kwargs["sdk_module"] = live_sdk_module
+        if live_adapter_module is not None:
+            live_kwargs["adapter_module"] = live_adapter_module
         try:
             live_response = run_live(validated_case, **live_kwargs)
         except Exception:
@@ -228,12 +228,12 @@ def record_human_review(decision: str, reason: str = "") -> dict[str, str | None
 _LIVE_ERROR_MESSAGES = {
     "invalid_case": "The case did not pass validation.",
     "invalid_mode": "Choose mock or live mode.",
-    "missing_configuration": "LIQUID_API_KEY is required for live mode.",
+    "missing_configuration": "OPENROUTER_API_KEY and OPENROUTER_MODEL are required for live mode.",
     "privacy_rejected": "The live request was rejected by the privacy checks.",
     "privacy_check_failed": "The live privacy check could not complete.",
-    "sdk_unavailable": "The Liquid SDK is unavailable for live mode.",
-    "sdk_incompatible": "The Liquid SDK could not prepare the live request.",
-    "client_unavailable": "The Liquid client could not be constructed.",
+    "adapter_unavailable": "The System One OpenAI adapter is unavailable for live mode.",
+    "adapter_incompatible": "The System One OpenAI adapter could not prepare the live request.",
+    "client_unavailable": "The OpenRouter System One adapter could not be constructed.",
     "provider_error": "The live request failed; no mock result was substituted.",
     "malformed_response": "The live response could not be safely normalized.",
     "mock_result_invalid": "The local mock result was unavailable.",

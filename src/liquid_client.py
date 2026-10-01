@@ -1,8 +1,8 @@
-"""Optional, lazy Liquid adapter for the plan-defined live contract.
+"""Optional, lazy OpenRouter adapter for the plan-defined live contract.
 
-Compatibility with ``typesafe-sdk`` and the documented API/model identifiers
-is unverified until a configured live smoke test succeeds. Importing this
-module does not import the provider SDK or read live configuration.
+The official System One Adapter bridges typed Noul/Score/Choice questions to
+OpenRouter's OpenAI-compatible Chat Completions API. Importing this module does
+not load provider dependencies or read live configuration.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import importlib
 import json
 import os
 from collections.abc import Mapping
+from types import SimpleNamespace
 from typing import Any
 
 from src.privacy import PrivacyError, prepare_case_for_request
@@ -22,37 +23,43 @@ from src.response_normalizer import (
 )
 
 
-API_BASE_URL = "https://api.liquid.ai"
-DEFAULT_MODEL = "d1:free"
-_SDK_MODULE = "typesafe_sdk"
+API_BASE_URL = "https://openrouter.ai/api/v1"
+_ADAPTER_MODULE = "system_one_adapter"
+_QUESTION_MODULE = "typesafe_sdk"
 _MAX_ERROR_LENGTH = 320
 
 
-class _SdkUnavailable(Exception):
-    """The provider module or one of its required typed classes is unavailable."""
+class _AdapterUnavailable(Exception):
+    """A provider or question SDK dependency is unavailable."""
+
+
+class _AdapterIncompatible(Exception):
+    """The installed provider adapter lacks its required public classes."""
 
 
 def run_live(
     case: Mapping[str, Any],
     *,
     client: Any = None,
-    sdk_module: Any = None,
+    adapter_module: Any = None,
     environ: Mapping[str, str] | None = None,
-    model: str | None = None,
     taxonomy_version: str = TAXONOMY_VERSION,
 ) -> dict[str, Any]:
-    """Run one explicitly requested live call, returning an error envelope on failure.
+    """Run one explicitly configured live call, returning an error on failure.
 
-    ``client`` and ``sdk_module`` are injectable for offline tests. An injected
-    client represents an already-configured provider client and therefore does
-    not require an environment API key. No failure path returns mock data.
+    ``client`` and ``adapter_module`` are injectable for offline tests. An
+    injected client represents an already-configured provider client and does
+    not require an API key, but an explicit OpenRouter model is always required.
+    No failure path returns mock data, and exception details are never exposed.
     """
     try:
         safe_case = prepare_case_for_request(case)
     except PrivacyError as error:
         return _error_result("privacy_rejected", str(error))
     except Exception:
-        return _error_result("privacy_check_failed", "The privacy check could not inspect this request.")
+        return _error_result(
+            "privacy_check_failed", "The privacy check could not inspect this request."
+        )
 
     try:
         state = json.dumps(safe_case, ensure_ascii=False)
@@ -60,48 +67,67 @@ def run_live(
         return _error_result("invalid_case", "The case could not be serialized for a live request.")
 
     environment = os.environ if environ is None else environ
-    selected_model = model if model is not None else environment.get("D1_MODEL", DEFAULT_MODEL)
+    selected_model = environment.get("OPENROUTER_MODEL")
     if not isinstance(selected_model, str) or not selected_model.strip():
-        selected_model = DEFAULT_MODEL
+        return _error_result(
+            "missing_configuration", "OPENROUTER_MODEL is required for live requests."
+        )
+    selected_model = selected_model.strip()
 
-    api_key: str | None = None
-    if client is None:
-        api_key = environment.get("LIQUID_API_KEY")
-        if not isinstance(api_key, str) or not api_key.strip():
-            return _error_result(
-                "missing_configuration",
-                "LIQUID_API_KEY is required for live requests.",
-            )
-
-    try:
-        sdk = sdk_module if sdk_module is not None else _load_sdk()
-    except _SdkUnavailable:
-        return _error_result("sdk_unavailable", "The Liquid SDK is unavailable for live requests.")
-    except Exception:
-        return _error_result("sdk_unavailable", "The Liquid SDK could not be loaded for live requests.")
+    api_key = environment.get("OPENROUTER_API_KEY")
+    if client is None and (not isinstance(api_key, str) or not api_key.strip()):
+        return _error_result(
+            "missing_configuration", "OPENROUTER_API_KEY is required for live requests."
+        )
 
     try:
-        questions = build_questions(sdk)
-    except _SdkUnavailable:
-        return _error_result("sdk_unavailable", "The Liquid SDK lacks required typed question classes.")
+        runtime = adapter_module if adapter_module is not None else _load_adapter_runtime()
+    except _AdapterUnavailable:
+        return _error_result(
+            "adapter_unavailable", "The System One OpenAI adapter is unavailable for live requests."
+        )
+    except _AdapterIncompatible:
+        return _error_result(
+            "adapter_incompatible", "The System One OpenAI adapter lacks required classes."
+        )
     except Exception:
-        return _error_result("sdk_incompatible", "The Liquid question definitions could not be constructed.")
+        return _error_result(
+            "adapter_unavailable", "The System One OpenAI adapter could not be loaded."
+        )
+
+    try:
+        questions = build_questions(runtime)
+    except _AdapterIncompatible:
+        return _error_result(
+            "adapter_incompatible", "The typed decision questions could not be constructed."
+        )
+    except Exception:
+        return _error_result(
+            "adapter_incompatible", "The typed decision questions could not be constructed."
+        )
 
     provider_client = client
     if provider_client is None:
         try:
-            client_type = getattr(sdk, "TypeSafeClient")
-            provider_client = client_type(api_key=api_key, base_url=API_BASE_URL)
+            provider_type = getattr(runtime, "OpenAIProvider")
+            provider = provider_type(
+                model_name=selected_model,
+                base_url=API_BASE_URL,
+                api_key=api_key,
+                api="chat_completions",
+            )
+            client_type = getattr(runtime, "SystemOneAdapterClient")
+            provider_client = client_type(provider)
         except Exception:
-            return _error_result("client_unavailable", "The Liquid client could not be constructed.")
+            return _error_result(
+                "client_unavailable", "The OpenRouter System One adapter could not be constructed."
+            )
 
     try:
-        result = provider_client.system_one(
-            model=selected_model,
-            state=state,
-            questions=questions,
-        )
+        result = provider_client.system_one(state=state, questions=questions)
     except Exception as error:
+        # Adapter exceptions can contain traces and request/response bodies.
+        # Expose only the exception class, never its message or attached data.
         return _error_result(
             "provider_error",
             "The live provider request failed.",
@@ -109,7 +135,9 @@ def run_live(
         )
 
     try:
-        return normalize_response(result, model=selected_model, taxonomy_version=taxonomy_version)
+        return normalize_response(
+            result, model=selected_model, taxonomy_version=taxonomy_version
+        )
     except ResponseNormalizationError as error:
         return _error_result(
             "malformed_response",
@@ -124,15 +152,15 @@ def run_live(
         )
 
 
-def build_questions(sdk_module: Any = None) -> dict[str, Any]:
-    """Construct the six independent Noul questions and optional Score/Choice."""
-    sdk = sdk_module if sdk_module is not None else _load_sdk()
+def build_questions(adapter_module: Any = None) -> dict[str, Any]:
+    """Construct the six Noul questions and optional Score and Choice."""
+    runtime = adapter_module if adapter_module is not None else _load_adapter_runtime()
     try:
-        noul_type = getattr(sdk, "Noul")
-        score_type = getattr(sdk, "Score")
-        choice_type = getattr(sdk, "Choice")
+        noul_type = getattr(runtime, "Noul")
+        score_type = getattr(runtime, "Score")
+        choice_type = getattr(runtime, "Choice")
     except Exception:
-        raise _SdkUnavailable from None
+        raise _AdapterIncompatible from None
 
     return {
         "perception_gap": noul_type(
@@ -208,11 +236,34 @@ def build_questions(sdk_module: Any = None) -> dict[str, Any]:
     }
 
 
-def _load_sdk() -> Any:
+def _load_adapter_runtime() -> Any:
     try:
-        return importlib.import_module(_SDK_MODULE)
+        adapter = importlib.import_module(_ADAPTER_MODULE)
     except Exception:
-        raise _SdkUnavailable from None
+        raise _AdapterUnavailable from None
+    try:
+        question_sdk = importlib.import_module(_QUESTION_MODULE)
+    except Exception:
+        raise _AdapterUnavailable from None
+
+    provider_type = getattr(adapter, "OpenAIProvider", None)
+    if provider_type is None:
+        try:
+            providers = importlib.import_module(f"{_ADAPTER_MODULE}.providers")
+            provider_type = getattr(providers, "OpenAIProvider")
+        except Exception:
+            raise _AdapterIncompatible from None
+
+    try:
+        return SimpleNamespace(
+            SystemOneAdapterClient=getattr(adapter, "SystemOneAdapterClient"),
+            OpenAIProvider=provider_type,
+            Noul=getattr(question_sdk, "Noul"),
+            Score=getattr(question_sdk, "Score"),
+            Choice=getattr(question_sdk, "Choice"),
+        )
+    except Exception:
+        raise _AdapterIncompatible from None
 
 
 def _error_result(
@@ -226,7 +277,7 @@ def _error_result(
         "message": message[:_MAX_ERROR_LENGTH],
     }
     if diagnostic is not None:
-        error["diagnostic"] = diagnostic[:400]
+        error["diagnostic"] = diagnostic[:120]
     return {"run_status": "error", "error": error}
 
 

@@ -1,6 +1,7 @@
-"""Offline tests for the lazy Liquid client boundary."""
+"""Offline tests for the lazy OpenRouter System One adapter boundary."""
 
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from src.app_state import load_curated_case
-from src.liquid_client import run_live
+from src.liquid_client import API_BASE_URL, run_live
 from src.response_normalizer import NOUL_ANSWERS
 
 
@@ -30,7 +31,7 @@ def _question_constructor(kind: str):
     return lambda **arguments: FakeQuestion(kind, arguments)
 
 
-FAKE_SDK = SimpleNamespace(
+FAKE_QUESTIONS = SimpleNamespace(
     Noul=_question_constructor("Noul"),
     Score=_question_constructor("Score"),
     Choice=_question_constructor("Choice"),
@@ -50,7 +51,27 @@ class FakeClient:
         return self.response
 
 
-class LiquidClientTests(unittest.TestCase):
+class FakeOpenAIProvider:
+    instances = []
+
+    def __init__(self, **arguments) -> None:
+        self.arguments = arguments
+        self.__class__.instances.append(self)
+
+
+class FakeSystemOneAdapterClient:
+    instances = []
+
+    def __init__(self, provider) -> None:
+        self.provider = provider
+        self.client = FakeClient(response=load_response())
+        self.__class__.instances.append(self)
+
+    def system_one(self, **arguments):
+        return self.client.system_one(**arguments)
+
+
+class OpenRouterAdapterTests(unittest.TestCase):
     def test_injected_client_receives_serialized_state_and_all_question_types(self) -> None:
         case = {
             "case_id": "FICTIONAL-CASE-01",
@@ -61,15 +82,15 @@ class LiquidClientTests(unittest.TestCase):
         normalized = run_live(
             case,
             client=client,
-            sdk_module=FAKE_SDK,
-            environ={"D1_MODEL": "offline-test-model"},
+            adapter_module=FAKE_QUESTIONS,
+            environ={"OPENROUTER_MODEL": "offline/test-model"},
         )
 
         self.assertEqual(normalized["run_status"], "live")
-        self.assertEqual(normalized["model"], "offline-test-model")
+        self.assertEqual(normalized["model"], "offline/test-model")
         self.assertEqual(len(client.calls), 1)
         call = client.calls[0]
-        self.assertEqual(call["model"], "offline-test-model")
+        self.assertNotIn("model", call)
         self.assertEqual(call["state"], json.dumps(case, ensure_ascii=False))
         self.assertIn("東京", call["state"])
         questions = call["questions"]
@@ -102,8 +123,8 @@ class LiquidClientTests(unittest.TestCase):
         normalized = run_live(
             case,
             client=client,
-            sdk_module=FAKE_SDK,
-            environ={},
+            adapter_module=FAKE_QUESTIONS,
+            environ={"OPENROUTER_MODEL": "offline/test-model"},
         )
 
         self.assertEqual(normalized["run_status"], "live")
@@ -119,50 +140,100 @@ class LiquidClientTests(unittest.TestCase):
         self.assertNotIn("raw_pdf_text", client.calls[0]["state"])
         self.assertTrue(all("raw_text" not in item for item in provider_state["evidence"]))
 
-    def test_missing_api_key_returns_error_without_loading_sdk(self) -> None:
+    def test_missing_api_key_returns_error_without_loading_adapter(self) -> None:
         with patch("src.liquid_client.importlib.import_module") as import_module:
             result = run_live(
                 {"summary": "Fictional aggregate summary"},
-                environ={},
+                environ={"OPENROUTER_MODEL": "offline/test-model"},
             )
 
         self.assertEqual(result["run_status"], "error")
         self.assertEqual(result["error"]["code"], "missing_configuration")
-        self.assertIn("LIQUID_API_KEY", result["error"]["message"])
+        self.assertIn("OPENROUTER_API_KEY", result["error"]["message"])
         self.assertNotIn("mock", result)
         import_module.assert_not_called()
 
-    def test_provider_exception_returns_safe_error_not_mock_data(self) -> None:
-        private_marker = "private-marker-provider-detail"
-        exception_message = "provider details: " + private_marker
-        client = FakeClient(failure=TimeoutError(exception_message))
+    def test_missing_explicit_model_returns_error_without_loading_adapter(self) -> None:
+        client = FakeClient(response=load_response())
+        with patch("src.liquid_client.importlib.import_module") as import_module:
+            result = run_live(
+                {"summary": "Fictional aggregate summary"},
+                client=client,
+                adapter_module=FAKE_QUESTIONS,
+                environ={"D1_MODEL": "d1:free"},
+            )
+
+        self.assertEqual(result["run_status"], "error")
+        self.assertEqual(result["error"]["code"], "missing_configuration")
+        self.assertIn("OPENROUTER_MODEL", result["error"]["message"])
+        self.assertEqual(client.calls, [])
+        import_module.assert_not_called()
+
+    def test_openrouter_provider_uses_explicit_model_key_and_chat_completions_root(self) -> None:
+        FakeOpenAIProvider.instances.clear()
+        FakeSystemOneAdapterClient.instances.clear()
+        runtime = SimpleNamespace(
+            **vars(FAKE_QUESTIONS),
+            OpenAIProvider=FakeOpenAIProvider,
+            SystemOneAdapterClient=FakeSystemOneAdapterClient,
+        )
+        result = run_live(
+            {"summary": "Fictional aggregate summary"},
+            adapter_module=runtime,
+            environ={
+                "OPENROUTER_API_KEY": "offline-test-key",
+                "OPENROUTER_MODEL": "offline/provider-model",
+                "D1_MODEL": "d1:free",
+            },
+        )
+
+        self.assertEqual(result["run_status"], "live")
+        provider = FakeOpenAIProvider.instances[0]
+        adapter_client = FakeSystemOneAdapterClient.instances[0]
+        self.assertEqual(
+            provider.arguments,
+            {
+                "model_name": "offline/provider-model",
+                "base_url": API_BASE_URL,
+                "api_key": "offline-test-key",
+                "api": "chat_completions",
+            },
+        )
+        self.assertIs(adapter_client.provider, provider)
+        self.assertEqual(adapter_client.client.calls[0]["state"], '{"summary": "Fictional aggregate summary"}')
+        self.assertNotIn("offline-test-key", json.dumps(result))
+        self.assertEqual(API_BASE_URL, "https://openrouter.ai/api/v1")
+
+    def test_provider_exception_hides_debug_trace_request_and_response_details(self) -> None:
+        private_marker = "private-marker-request-response-debug-payload"
+        client = FakeClient(failure=TimeoutError(f"trace request response: {private_marker}"))
 
         result = run_live(
             {"summary": "Fictional aggregate summary"},
             client=client,
-            sdk_module=FAKE_SDK,
-            environ={},
+            adapter_module=FAKE_QUESTIONS,
+            environ={"OPENROUTER_MODEL": "offline/test-model"},
         )
 
         self.assertEqual(result["run_status"], "error")
         self.assertEqual(result["error"]["code"], "provider_error")
         self.assertEqual(result["error"]["message"], "The live provider request failed.")
-        self.assertIn("TimeoutError", result["error"]["diagnostic"])
-        self.assertNotIn(exception_message, json.dumps(result))
+        self.assertEqual(result["error"]["diagnostic"], "TimeoutError")
         self.assertNotIn(private_marker, json.dumps(result))
+        self.assertNotIn("request response", json.dumps(result))
         self.assertNotIn("mock", result)
 
-    def test_missing_sdk_is_reported_without_importing_it_at_module_load(self) -> None:
+    def test_missing_adapter_is_reported_without_importing_it_at_module_load(self) -> None:
         client = FakeClient(response=load_response())
         with patch("src.liquid_client.importlib.import_module", side_effect=ModuleNotFoundError):
             result = run_live(
                 {"summary": "Fictional aggregate summary"},
                 client=client,
-                environ={},
+                environ={"OPENROUTER_MODEL": "offline/test-model"},
             )
 
         self.assertEqual(result["run_status"], "error")
-        self.assertEqual(result["error"]["code"], "sdk_unavailable")
+        self.assertEqual(result["error"]["code"], "adapter_unavailable")
         self.assertEqual(client.calls, [])
 
     def test_privacy_rejection_prevents_provider_call_and_does_not_echo_value(self) -> None:
@@ -172,8 +243,8 @@ class LiquidClientTests(unittest.TestCase):
         result = run_live(
             {"notes": "Fictional note for " + private_value},
             client=client,
-            sdk_module=FAKE_SDK,
-            environ={},
+            adapter_module=FAKE_QUESTIONS,
+            environ={"OPENROUTER_MODEL": "offline/test-model"},
         )
 
         self.assertEqual(result["run_status"], "error")
@@ -196,8 +267,8 @@ class LiquidClientTests(unittest.TestCase):
         result = run_live(
             {"summary": "Fictional aggregate summary"},
             client=client,
-            sdk_module=FAKE_SDK,
-            environ={},
+            adapter_module=FAKE_QUESTIONS,
+            environ={"OPENROUTER_MODEL": "offline/test-model"},
         )
 
         self.assertEqual(result["run_status"], "error")

@@ -68,6 +68,7 @@ def live_response():
     return {"answers": answers}
 
 
+@patch.dict("os.environ", {"OPENROUTER_MODEL": "offline/test-model"})
 class AppStateTests(unittest.TestCase):
     def test_fixture_loading_returns_detached_case_without_mutating_fixture(self) -> None:
         fixture_before = FIXTURE_PATH.read_text(encoding="utf-8")
@@ -174,7 +175,7 @@ class AppStateTests(unittest.TestCase):
             load_synthetic_case(),
             "live",
             live_client=client,
-            live_sdk_module=fake_sdk(),
+            live_adapter_module=fake_sdk(),
         )
 
         self.assertEqual(client.calls, 1)
@@ -193,7 +194,7 @@ class AppStateTests(unittest.TestCase):
             load_curated_case(),
             "live",
             live_client=client,
-            live_sdk_module=fake_sdk(),
+            live_adapter_module=fake_sdk(),
         )
 
         self.assertEqual(client.calls, 1)
@@ -211,7 +212,7 @@ class AppStateTests(unittest.TestCase):
             load_synthetic_case(),
             "live",
             live_client=client,
-            live_sdk_module=fake_sdk(),
+            live_adapter_module=fake_sdk(),
         )
 
         self.assertEqual(client.calls, 1)
@@ -265,7 +266,7 @@ class AppStateTests(unittest.TestCase):
             load_synthetic_case(),
             "mock",
             live_client=client,
-            live_sdk_module=fake_sdk(),
+            live_adapter_module=fake_sdk(),
         )
 
         self.assertEqual(client.calls, 0)
@@ -309,12 +310,13 @@ class AppStateTests(unittest.TestCase):
                     record_human_review(decision, reason)
 
     def test_human_review_rejects_credential_like_reason_without_echoing_it(self) -> None:
-        secret_reason = "The live key was LIQUID_API_KEY=secret-marker-123"
+        for key_name in ("OPENROUTER_API_KEY", "LIQUID_API_KEY", "TYPESAFE_API_KEY"):
+            secret_reason = f"The live key was {key_name}=secret-marker-123"
+            with self.subTest(key_name=key_name):
+                with self.assertRaises(HumanReviewValidationError) as raised:
+                    record_human_review("corrected", secret_reason)
 
-        with self.assertRaises(HumanReviewValidationError) as raised:
-            record_human_review("corrected", secret_reason)
-
-        self.assertNotIn("secret-marker-123", str(raised.exception))
+                self.assertNotIn("secret-marker-123", str(raised.exception))
 
 
 if __name__ == "__main__":

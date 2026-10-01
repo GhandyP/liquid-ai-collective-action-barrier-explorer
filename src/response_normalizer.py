@@ -30,7 +30,7 @@ class ResponseNormalizationError(ValueError):
 
 def normalize_response(
     result: Any,
-    model: str = "d1:free",
+    model: str,
     taxonomy_version: str = TAXONOMY_VERSION,
 ) -> dict[str, Any]:
     """Normalize mapping- or attribute-style SDK results to the local contract.

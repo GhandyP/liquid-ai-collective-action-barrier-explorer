@@ -1,4 +1,5 @@
 streamlit
 python-dotenv
 typesafe-sdk
+system-one-adapter[openai]
 pytest

@@ -1,4 +1,4 @@
-"""Offline tests for the bounded Liquid response normalizer."""
+"""Offline tests for the bounded OpenRouter response normalizer."""
 
 from __future__ import annotations
 
@@ -25,9 +25,10 @@ def load_response() -> dict:
 
 class ResponseNormalizerTests(unittest.TestCase):
     def test_normalizes_complete_noul_score_and_choice_response(self) -> None:
-        normalized = normalize_response(load_response(), model="d1:free")
+        normalized = normalize_response(load_response(), model="offline/test-model")
 
         self.assertEqual(normalized["run_status"], "live")
+        self.assertEqual(normalized["model"], "offline/test-model")
         self.assertEqual(normalized["taxonomy_version"], "0.1")
         self.assertEqual(set(normalized["hypotheses"]), set(NOUL_ANSWERS))
         self.assertEqual(normalized["hypotheses"]["perception_gap"]["probability"], 0.78)
@@ -181,7 +182,8 @@ class ResponseNormalizerTests(unittest.TestCase):
         }
 
         normalized = normalize_response(
-            SimpleNamespace(answers=SimpleNamespace(**answer_objects))
+            SimpleNamespace(answers=SimpleNamespace(**answer_objects)),
+            model="offline/test-model",
         )
 
         self.assertEqual(
@@ -204,7 +206,7 @@ class ResponseNormalizerTests(unittest.TestCase):
         del fixture["answers"]["response_efficacy_level"]
         del fixture["answers"]["next_diagnostic_probe"]
 
-        normalized = normalize_response(fixture)
+        normalized = normalize_response(fixture, model="offline/test-model")
 
         self.assertNotIn("response_efficacy_level", normalized)
         self.assertNotIn("next_diagnostic_probe", normalized)
@@ -214,7 +216,7 @@ class ResponseNormalizerTests(unittest.TestCase):
         del fixture["answers"]["values_conflict"]
 
         with self.assertRaises(ResponseNormalizationError) as raised:
-            normalize_response(fixture)
+            normalize_response(fixture, model="offline/test-model")
 
         self.assertIn("answers.values_conflict", str(raised.exception))
         self.assertNotIn("probability", str(raised.exception))
@@ -224,7 +226,7 @@ class ResponseNormalizerTests(unittest.TestCase):
         fixture["answers"]["perception_gap"]["probability"] = "private-marker-not-a-number"
 
         with self.assertRaises(ResponseNormalizationError) as raised:
-            normalize_response(fixture)
+            normalize_response(fixture, model="offline/test-model")
 
         self.assertIn("answers.perception_gap.probability", str(raised.exception))
         self.assertNotIn("private-marker-not-a-number", str(raised.exception))
@@ -235,14 +237,14 @@ class ResponseNormalizerTests(unittest.TestCase):
                 fixture = load_response()
                 fixture["answers"]["structural_barrier"]["probability"] = invalid_probability
                 with self.assertRaisesRegex(ResponseNormalizationError, r"\[0, 1\]"):
-                    normalize_response(fixture)
+                    normalize_response(fixture, model="offline/test-model")
 
     def test_malformed_optional_score_is_rejected_without_echoing_value(self) -> None:
         fixture = load_response()
         fixture["answers"]["response_efficacy_level"]["score"] = "private-score-marker"
 
         with self.assertRaises(ResponseNormalizationError) as raised:
-            normalize_response(fixture)
+            normalize_response(fixture, model="offline/test-model")
 
         self.assertIn("answers.response_efficacy_level.score", str(raised.exception))
         self.assertNotIn("private-score-marker", str(raised.exception))

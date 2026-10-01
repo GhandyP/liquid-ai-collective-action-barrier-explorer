@@ -79,8 +79,18 @@ def main() -> None:
         key="case_selection",
     )
     selected_mode = st.sidebar.radio("Run mode", options=("mock", "live"), index=0)
-    st.sidebar.caption("Mock is the offline default. Selecting live is an explicit opt-in and requires LIQUID_API_KEY; D1_MODEL is optional.")
-    st.sidebar.caption("The SDK setup follows Liquid's Decision Models documentation; a live API/model call has not been smoke-tested. Failures remain errors and never fall back to mock.")
+    st.sidebar.caption(
+        "Mock is the offline default. Live mode requires OPENROUTER_API_KEY and an explicitly configured "
+        "OPENROUTER_MODEL; D1_MODEL is ignored."
+    )
+    st.sidebar.caption(
+        "Live mode sends typed decision prompts through the System One Adapter to the selected OpenRouter "
+        "model. This is not Liquid AI's native D1 Decision Model."
+    )
+    st.sidebar.caption(
+        "Check current OpenRouter and model-provider retention/training terms before sending data. "
+        "A live API/model call has not been smoke-tested; failures remain errors and never fall back to mock."
+    )
     st.caption("Use anonymized summaries only. Do not enter personal, confidential, transcript, or respondent-row data.")
 
     previous_case_name = st.session_state.get("_active_case_selection")
