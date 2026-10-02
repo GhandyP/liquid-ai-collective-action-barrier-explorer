@@ -16,6 +16,12 @@
 | Storage | In-memory Streamlit session state only; there is no database or account system |
 | Safety boundary | Outputs are hypotheses for investigation, not causal findings, population estimates, or judgments about individuals |
 
+## Application preview
+
+<img src="./screencapture-localhost-8501-2026-10-02-10_39_05.png" alt="D1 Streamlit prototype showing the synthetic case and independent hypothesis profile" width="480">
+
+*The screenshot shows the fictional Riverbridge case in offline mock mode. Its profile is a fixed demonstration fixture, not a calculation from the evidence shown.*
+
 ## What problem does D1 help explore?
 
 When a group does not take an intended action, the same visible behavior can have very different explanations. People may misunderstand the relevant facts, disagree about priorities, doubt that an action will work, be unable to coordinate, or face a practical constraint such as missing authority or limited time.
@@ -184,6 +190,7 @@ The local privacy checks are bounded safeguards, not a complete anonymization or
 ├── app.py                        # Streamlit UI and user flow
 ├── requirements.txt
 ├── Portada horizontal 169 proyecto open source.png
+├── screencapture-localhost-8501-2026-10-02-10_39_05.png  # Synthetic mock-mode application preview
 ├── src/
 │   ├── app_state.py              # Fixture loading, run orchestration, review state
 │   ├── case_schema.py             # Case and evidence validation
